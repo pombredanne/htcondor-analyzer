@@ -28,7 +28,7 @@ struct Database {
   bool Execute(const char *);
 
   // Sets ErrorMessage from the database object.
-  void SetError();
+  void SetError(const char *Context=nullptr);
 };
 
 struct Statement {

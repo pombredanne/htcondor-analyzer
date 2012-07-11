@@ -124,7 +124,7 @@ Database::Execute(const char *sql)
     Statement stmt;
     int ret = sqlite3_prepare_v2(Ptr, sql, -1, &stmt.Ptr, &tail);
     if (ret != SQLITE_OK) {
-      SetError();
+      SetError("prepare");
       return false;
     }
     if (sqlite3_bind_parameter_count(stmt.Ptr) != 0) {
@@ -137,7 +137,7 @@ Database::Execute(const char *sql)
       ret = sqlite3_step(stmt.Ptr);
     } while (ret == SQLITE_ROW);
     if (ret != SQLITE_DONE) {
-      SetError();
+      SetError("step");
       return false;
     }
     sql = tail;
@@ -146,9 +146,14 @@ Database::Execute(const char *sql)
 }
 
 void
-Database::SetError()
+Database::SetError(const char *Context)
 {
   ErrorMessage.assign(sqlite3_errmsg(Ptr));
+  if (Context) {
+    ErrorMessage += " [";
+    ErrorMessage += Context;
+    ErrorMessage += "]";
+  }
 }
 
 //////////////////////////////////////////////////////////////////////
@@ -168,7 +173,7 @@ Statement::Prepare(Database &DB, const char *sql)
   const char *tail;
   if (sqlite3_prepare_v2
       (DB.Ptr, sql, -1, &stmt.Ptr, &tail) != SQLITE_OK) {
-    DB.SetError();
+    DB.SetError("Prepare");
     return false;
   }
   if (*tail) {
@@ -196,11 +201,8 @@ namespace {
 					      const FileIdentification &FI)
   {
     Statement stmt;
-    if (sqlite3_prepare_v2
-	(DB.DB->Ptr,
-	 "INSERT INTO files (path, mtime, size) VALUES (?, ?, ?)",
-	 -1, &stmt.Ptr, nullptr) != SQLITE_OK) {
-      DB.DB->SetError();
+    if (!stmt.Prepare
+	(*DB.DB, "INSERT INTO files (path, mtime, size) VALUES (?, ?, ?)")) {
       return 0;
     }
     sqlite3_bind_text(stmt.Ptr, 1, FI.Path.data(), FI.Path.size(),
@@ -208,7 +210,7 @@ namespace {
     sqlite3_bind_int64(stmt.Ptr, 2, FI.Mtime);
     sqlite3_bind_int64(stmt.Ptr, 3, FI.Size);
     if (sqlite3_step(stmt.Ptr) != SQLITE_DONE) {
-      DB.DB->SetError();
+      DB.DB->SetError("step");
       return 0;
     }
     sqlite3_int64 rowid = sqlite3_last_insert_rowid(DB.DB->Ptr);
