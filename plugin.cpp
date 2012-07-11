@@ -359,27 +359,24 @@ private:
 	      unsigned Line, unsigned Column, const char *Tool,
 	      const std::string &Message)
   {
-    sqlite3_stmt *stmt;
-    if (sqlite3_prepare_v2
-      (FileDB->DB->Ptr,
-       "INSERT INTO reports (file, line, column, tool, message) "
-       "VALUES (?, ?, ?, ?, ?);", -1, &stmt, nullptr) != SQLITE_OK) {
+    Statement stmt;
+    if (!stmt.Prepare
+	(*FileDB->DB,
+	 "INSERT INTO reports (file, line, column, tool, message) "
+	 "VALUES (?, ?, ?, ?, ?);")) {
+      return false;
+    }
+    sqlite3_bind_int64(stmt.Ptr, 1, FID);
+    sqlite3_bind_int64(stmt.Ptr, 2, Line);
+    sqlite3_bind_int64(stmt.Ptr, 3, Column);
+    sqlite3_bind_text(stmt.Ptr, 4, Tool, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt.Ptr, 5, Message.data(), Message.size(),
+		      SQLITE_TRANSIENT);
+    if (sqlite3_step(stmt.Ptr) != SQLITE_DONE) {
       FileDB->DB->SetError();
       return false;
     }
-    sqlite3_bind_int64(stmt, 1, FID);
-    sqlite3_bind_int64(stmt, 2, Line);
-    sqlite3_bind_int64(stmt, 3, Column);
-    sqlite3_bind_text(stmt, 4, Tool, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 5, Message.data(), Message.size(),
-		      SQLITE_TRANSIENT);
-    bool result = true;
-    if (sqlite3_step(stmt) != SQLITE_DONE) {
-      FileDB->DB->SetError();
-      result = false;
-    }
-    sqlite3_finalize(stmt);
-    return result;
+    return true;
   }
 
   static CXXMethodDecl *getMethodDecl(const CXXMemberCallExpr *Expr) {
