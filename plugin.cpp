@@ -116,17 +116,17 @@ public:
 
   bool shouldVisitTemplateInstantiations() const { return true; }
 
-  bool TraverseCXXMemberCallExpr(CXXMemberCallExpr *Expr)
+  bool VisitCXXMemberCallExpr(CXXMemberCallExpr *Expr)
   {
     return ProcessRegisterCommand(Expr);
   }
 
-  bool TraverseCallExpr(CallExpr *Expr)
+  bool VisitCallExpr(CallExpr *Expr)
   {
     return ProcessSprintf(Expr) | ProcessStrcpy(Expr);
   }
 
-  bool TraverseCXXOperatorCallExpr(CXXOperatorCallExpr *Expr)
+  bool VisitCXXOperatorCallExpr(CXXOperatorCallExpr *Expr)
   {
     return ProcessMyStringOperator(Expr);
   }
@@ -251,7 +251,7 @@ private:
       {
       }
 
-      bool TraverseDeclRefExpr(DeclRefExpr *Expr) {
+      bool VisitDeclRefExpr(DeclRefExpr *Expr) {
 	if (!Parameter) {
 	  if (ParmVarDecl *Parm = dyn_cast<ParmVarDecl>(Expr->getDecl())) {
 	    Parameter = true;
@@ -261,14 +261,14 @@ private:
 	return true;
       }
 
-      bool TraverseUnaryDeref(UnaryOperator *) {
+      bool VisitUnaryDeref(UnaryOperator *) {
 	// If we copy into a dereferenced pointer, we likely have a
 	// false positive because the pointee might have been
 	// allocated by us.
 	return false;
       }
 
-      bool TraverseMemberExpr(MemberExpr *Expr) {
+      bool VisitMemberExpr(MemberExpr *Expr) {
 	// -> dereference is also a pointer dereference.
 	return !Expr->isArrow();
       }
