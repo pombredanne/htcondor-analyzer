@@ -55,6 +55,7 @@ namespace {
       return false;
     }
     DB.Ptr = db;
+    // TODO: this is not effective
     sqlite3_busy_timeout(DB.Ptr, 15000); // 15 seconds
     return DB.Execute("PRAGMA foreign_keys = ON;");
   }
@@ -137,7 +138,7 @@ Database::Execute(const char *sql)
       ret = sqlite3_step(stmt.Ptr);
     } while (ret == SQLITE_ROW);
     if (ret != SQLITE_DONE) {
-      SetError("step");
+      SetError(sqlite3_sql(stmt.Ptr));
       return false;
     }
     sql = tail;
@@ -184,6 +185,25 @@ Statement::Prepare(Database &DB, const char *sql)
   return true;
 }
 
+int
+Statement::StepRetryOnLocked()
+{
+  int ret = sqlite3_step(Ptr);
+  if (ret != SQLITE_LOCKED && ret != SQLITE_BUSY) {
+    return ret;
+  }
+  time_t end = time(nullptr) + 15; // retry for 15 seconds
+  do {
+    // Sleep for 100ms on average.
+    usleep((rand() % 100000) + (rand() % 100000));
+    ret = sqlite3_step(Ptr);
+    if (ret != SQLITE_LOCKED && ret != SQLITE_BUSY) {
+      return ret;
+    }
+  } while (time(nullptr) <= end);
+  return ret;
+}
+
 //////////////////////////////////////////////////////////////////////
 // FileIdentificationDatabase
 
@@ -209,8 +229,8 @@ namespace {
 		      SQLITE_TRANSIENT);
     sqlite3_bind_int64(stmt.Ptr, 2, FI.Mtime);
     sqlite3_bind_int64(stmt.Ptr, 3, FI.Size);
-    if (sqlite3_step(stmt.Ptr) != SQLITE_DONE) {
-      DB.DB->SetError("step");
+    if (stmt.StepRetryOnLocked() != SQLITE_DONE) {
+      DB.DB->SetError(sqlite3_sql(stmt.Ptr));
       return 0;
     }
     sqlite3_int64 rowid = sqlite3_last_insert_rowid(DB.DB->Ptr);
@@ -267,7 +287,7 @@ FileIdentificationDatabase::MarkForProcessing(const char *Path)
   }
   sqlite3_bind_text(SQL.Ptr, 1, FI.Path.data(), FI.Path.size(),
 		    SQLITE_TRANSIENT);
-  int ret = sqlite3_step(SQL.Ptr);
+  int ret = SQL.StepRetryOnLocked();
   if (ret == SQLITE_DONE) {
     // File is not in the database.  No need to mask older errors.
     return true;

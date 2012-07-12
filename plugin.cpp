@@ -372,8 +372,8 @@ private:
     sqlite3_bind_text(stmt.Ptr, 4, Tool, -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt.Ptr, 5, Message.data(), Message.size(),
 		      SQLITE_TRANSIENT);
-    if (sqlite3_step(stmt.Ptr) != SQLITE_DONE) {
-      FileDB->DB->SetError();
+    if (stmt.StepRetryOnLocked() != SQLITE_DONE) {
+      FileDB->DB->SetError(sqlite3_sql(stmt.Ptr));
       return false;
     }
     return true;

@@ -42,6 +42,10 @@ struct Statement {
 
   void Close();
   bool Prepare(Database &DB, const char *sql);
+
+  // Invokes sqlite3_step and retry if it returns SQLITE_LOCKED.
+  // Warning: Return value is int error code, not bool.
+  int StepRetryOnLocked();
 };
 
 // Determines the canonical name for the path.
