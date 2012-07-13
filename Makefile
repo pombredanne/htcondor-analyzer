@@ -8,13 +8,13 @@ LLVM_LDFLAGS := $(shell llvm-config --ldflags)
 
 all: plugin.so create-db report
 
-plugin.so: plugin.o util.o db-file.o db.o
+plugin.so: plugin.o util.o db-file.o db.o file.o
 	g++ -shared $(LDFLAGS) -o $@ $^ $(LLVM_LDFLAGS) $(LIBS)
 
-create-db: create-db.o db.o db-file.o util.o
+create-db: create-db.o db.o db-file.o util.o file.o
 	g++ $(LDFLAGS) -o $@ $^ $(LLVM_LDFLAGS) $(LIBS)
 
-report: report.o db.o db-file.o util.o
+report: report.o db.o db-file.o util.o file.o
 	g++ $(LDFLAGS) -o $@ $^ $(LLVM_LDFLAGS) $(LIBS)
 
 %.o : %.cpp $(HEADER_FILES)

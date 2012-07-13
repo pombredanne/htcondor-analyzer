@@ -25,7 +25,7 @@
 //
 // Florian Weimer / Red Hat Product Security Team
 
-#include "db.hpp"
+#include "db-file.hpp"
 
 #include <sstream>
 

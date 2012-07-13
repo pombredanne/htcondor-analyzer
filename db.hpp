@@ -47,32 +47,3 @@ struct Statement {
   // Warning: Return value is int error code, not bool.
   int StepRetryOnLocked();
 };
-
-// Determines the canonical name for the path.
-bool ResolvePath(const char *path, std::string &result);
-
-struct FileIdentification {
-  std::string Path; // canonical path
-  time_t Mtime;
-  unsigned long long Size;
-
-  // Initializes the object with the data form the specified file.
-  FileIdentification(const char *path);
-  bool Valid() const { return !Path.empty(); }
-};
-
-class FileIdentificationDatabase {
-public:
-  typedef unsigned ID;
-  std::shared_ptr<Database> DB;
-  std::map<std::string, unsigned> PathToID;
-public:
-  FileIdentificationDatabase(std::shared_ptr<Database> db);
-  ~FileIdentificationDatabase();
-
-  ID Resolve(const char *Path);
-
-  // Record that the file is subject to processing.  A database entry
-  // is added, masking previous reports for the same file.
-  bool MarkForProcessing(const char *Path);
-};
