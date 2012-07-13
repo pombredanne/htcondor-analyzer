@@ -12,7 +12,7 @@
 //   (similar to gets()).
 //
 // The results are stored in an SQLite database
-// "condor-analysis.sqlite", which must be located in a parent
+// "condor-analyzer.sqlite", which must be located in a parent
 // directory.  This database has to be created manually, using the
 // ./create-db utility.
 //
