@@ -2,7 +2,6 @@
 
 #include "db.hpp"
 
-#include <map>
 #include <memory>
 
 struct FileIdentification {
@@ -17,17 +16,14 @@ struct FileIdentification {
 
 class FileIdentificationDatabase {
 private:
-  typedef unsigned ID;
-  std::shared_ptr<Database> DB;
-  std::map<std::string, unsigned> PathToID;
-  ID Resolve(const char *Path);
-  ID insertIntoDB(const FileIdentification &FI);
+  struct Impl;
+  std::unique_ptr<Impl> impl;
 public:
   FileIdentificationDatabase(std::shared_ptr<Database> db);
   ~FileIdentificationDatabase();
 
-  bool isOpen() const { return DB->Ptr != nullptr; }
-  std::string ErrorMessage() const { return DB->ErrorMessage; }
+  bool isOpen() const;
+  std::string ErrorMessage() const;
 
   bool Report(const char *Path,
 	      unsigned Line, unsigned Column, const char *Tool,
