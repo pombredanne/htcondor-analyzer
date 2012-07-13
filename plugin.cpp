@@ -92,7 +92,7 @@ public:
 	continue;
       }
       if (!FileDB->MarkForProcessing(FEntry->getName())) {
-	FatalError(Context.getDiagnostics(), FileDB->DB->ErrorMessage);
+	FatalError(Context.getDiagnostics(), FileDB->ErrorMessage());
 	break;
       }
     }
@@ -333,7 +333,7 @@ private:
       return;
     }
 
-    if (!FileDB->DB->Ptr) {
+    if (!FileDB->isOpen()) {
       return;
     }
 
@@ -349,7 +349,7 @@ private:
       unsigned Column = PLoc.getColumn();
       if (!FileDB->Report(FileName, Line, Column, Tool, Message)) {
 	FatalError(Context.getDiagnostics(), Location,
-		   "could not report: " + FileDB->DB->ErrorMessage);
+		   "could not report: " + FileDB->ErrorMessage());
 	return;
       }
     }
@@ -378,13 +378,13 @@ protected:
     if (args.size() && args[0] == "help") {
       PrintHelp(llvm::errs());
     }
-
-    FileDB = std::make_shared<FileIdentificationDatabase>
-      (std::make_shared<Database>());
-    if (!FileDB->DB->Open()) {
-      FatalError(CI.getDiagnostics(), FileDB->DB->ErrorMessage);
+    
+    auto DB = std::make_shared<Database>();
+    if (!DB->Open()) {
+      FatalError(CI.getDiagnostics(), DB->ErrorMessage);
       return false;
     }
+    FileDB = std::make_shared<FileIdentificationDatabase>(DB);
     return true;
   }
   void PrintHelp(llvm::raw_ostream& ros) {

@@ -16,14 +16,18 @@ struct FileIdentification {
 };
 
 class FileIdentificationDatabase {
-public:
+private:
   typedef unsigned ID;
   std::shared_ptr<Database> DB;
   std::map<std::string, unsigned> PathToID;
   ID Resolve(const char *Path);
+  ID insertIntoDB(const FileIdentification &FI);
 public:
   FileIdentificationDatabase(std::shared_ptr<Database> db);
   ~FileIdentificationDatabase();
+
+  bool isOpen() const { return DB->Ptr != nullptr; }
+  std::string ErrorMessage() const { return DB->ErrorMessage; }
 
   bool Report(const char *Path,
 	      unsigned Line, unsigned Column, const char *Tool,

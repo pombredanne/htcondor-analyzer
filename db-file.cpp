@@ -35,30 +35,28 @@ FileIdentificationDatabase::~FileIdentificationDatabase()
 {
 }
 
-namespace {
-  FileIdentificationDatabase::ID insertIntoDB(FileIdentificationDatabase &DB,
-					      const FileIdentification &FI)
-  {
-    Statement stmt;
-    if (!stmt.Prepare
-	(*DB.DB, "INSERT INTO files (path, mtime, size) VALUES (?, ?, ?)")) {
-      return 0;
-    }
-    sqlite3_bind_text(stmt.Ptr, 1, FI.Path.data(), FI.Path.size(),
-		      SQLITE_TRANSIENT);
-    sqlite3_bind_int64(stmt.Ptr, 2, FI.Mtime);
-    sqlite3_bind_int64(stmt.Ptr, 3, FI.Size);
-    if (stmt.StepRetryOnLocked() != SQLITE_DONE) {
-      DB.DB->SetError(sqlite3_sql(stmt.Ptr));
-      return 0;
-    }
-    sqlite3_int64 rowid = sqlite3_last_insert_rowid(DB.DB->Ptr);
-    if (rowid <= 0 || rowid > UINT_MAX) {
-      DB.DB->ErrorMessage = "row ID outside range";
-      return 0;
-    }
-    return rowid;
+auto FileIdentificationDatabase::insertIntoDB(const FileIdentification &FI)
+  -> ID
+{
+  Statement stmt;
+  if (!stmt.Prepare
+      (*DB, "INSERT INTO files (path, mtime, size) VALUES (?, ?, ?)")) {
+    return 0;
   }
+  sqlite3_bind_text(stmt.Ptr, 1, FI.Path.data(), FI.Path.size(),
+		    SQLITE_TRANSIENT);
+  sqlite3_bind_int64(stmt.Ptr, 2, FI.Mtime);
+  sqlite3_bind_int64(stmt.Ptr, 3, FI.Size);
+  if (stmt.StepRetryOnLocked() != SQLITE_DONE) {
+    DB->SetError(sqlite3_sql(stmt.Ptr));
+    return 0;
+  }
+  sqlite3_int64 rowid = sqlite3_last_insert_rowid(DB->Ptr);
+  if (rowid <= 0 || rowid > UINT_MAX) {
+    DB->ErrorMessage = "row ID outside range";
+    return 0;
+  }
+  return rowid;
 }
 
 auto
@@ -71,7 +69,7 @@ FileIdentificationDatabase::Resolve(const char *Path) -> ID
     if (FI.Valid()) {
       p = PathToID.find(FI.Path);
       if (p == PathToID.end()) {
-	ID id = insertIntoDB(*this, FI);
+	ID id = insertIntoDB(FI);
 	if (id != 0) {
 	  PathToID[Path] = id;
 	  PathToID[FI.Path] = id;
