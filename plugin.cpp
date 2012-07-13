@@ -347,12 +347,12 @@ private:
       const char *FileName = PLoc.getFilename();
       unsigned Line = PLoc.getLine();
       unsigned Column = PLoc.getColumn();
-      FileIdentificationDatabase::ID FID = FileDB->Resolve(FileName);
-      if (!(FID && FileDB->Report(FID, Line, Column, Tool, Message)))
+      if (!FileDB->Report(FileName, Line, Column, Tool, Message)) {
 	FatalError(Context.getDiagnostics(), Location,
 		   "could not report: " + FileDB->DB->ErrorMessage);
 	return;
       }
+    }
   }
 
   static CXXMethodDecl *getMethodDecl(const CXXMemberCallExpr *Expr) {

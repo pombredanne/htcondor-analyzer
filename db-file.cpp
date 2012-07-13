@@ -93,9 +93,14 @@ FileIdentificationDatabase::Resolve(const char *Path) -> ID
 
 bool
 FileIdentificationDatabase::Report
-  (FileIdentificationDatabase::ID FID, unsigned Line, unsigned Column,
+  (const char *Path, unsigned Line, unsigned Column,
    const char *Tool, const std::string &Message)
 {
+  ID FID = Resolve(Path);
+  if (FID == 0) {
+    return false;
+  }
+
   Statement stmt;
   if (!stmt.Prepare
       (*DB,

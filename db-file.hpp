@@ -20,12 +20,12 @@ public:
   typedef unsigned ID;
   std::shared_ptr<Database> DB;
   std::map<std::string, unsigned> PathToID;
+  ID Resolve(const char *Path);
 public:
   FileIdentificationDatabase(std::shared_ptr<Database> db);
   ~FileIdentificationDatabase();
 
-  ID Resolve(const char *Path);
-  bool Report(FileIdentificationDatabase::ID FID,
+  bool Report(const char *Path,
 	      unsigned Line, unsigned Column, const char *Tool,
 	      const std::string &Message);
 
