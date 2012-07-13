@@ -90,6 +90,32 @@ FileIdentificationDatabase::Resolve(const char *Path) -> ID
   return p->second;
 }
 
+
+bool
+FileIdentificationDatabase::Report
+  (FileIdentificationDatabase::ID FID, unsigned Line, unsigned Column,
+   const char *Tool, const std::string &Message)
+{
+  Statement stmt;
+  if (!stmt.Prepare
+      (*DB,
+       "INSERT INTO reports (file, line, column, tool, message) "
+       "VALUES (?, ?, ?, ?, ?);")) {
+    return false;
+  }
+  sqlite3_bind_int64(stmt.Ptr, 1, FID);
+  sqlite3_bind_int64(stmt.Ptr, 2, Line);
+  sqlite3_bind_int64(stmt.Ptr, 3, Column);
+  sqlite3_bind_text(stmt.Ptr, 4, Tool, -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt.Ptr, 5, Message.data(), Message.size(),
+		    SQLITE_TRANSIENT);
+  if (stmt.StepRetryOnLocked() != SQLITE_DONE) {
+    DB->SetError(sqlite3_sql(stmt.Ptr));
+    return false;
+  }
+  return true;
+}
+
 bool
 FileIdentificationDatabase::MarkForProcessing(const char *Path)
 {

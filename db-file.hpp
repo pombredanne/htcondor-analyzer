@@ -25,6 +25,9 @@ public:
   ~FileIdentificationDatabase();
 
   ID Resolve(const char *Path);
+  bool Report(FileIdentificationDatabase::ID FID,
+	      unsigned Line, unsigned Column, const char *Tool,
+	      const std::string &Message);
 
   // Record that the file is subject to processing.  A database entry
   // is added, masking previous reports for the same file.

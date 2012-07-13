@@ -348,35 +348,11 @@ private:
       unsigned Line = PLoc.getLine();
       unsigned Column = PLoc.getColumn();
       FileIdentificationDatabase::ID FID = FileDB->Resolve(FileName);
-      if (!(FID && Report(FID, Line, Column, Tool, Message)))
+      if (!(FID && FileDB->Report(FID, Line, Column, Tool, Message)))
 	FatalError(Context.getDiagnostics(), Location,
 		   "could not report: " + FileDB->DB->ErrorMessage);
 	return;
       }
-  }
-
-  bool Report(FileIdentificationDatabase::ID FID,
-	      unsigned Line, unsigned Column, const char *Tool,
-	      const std::string &Message)
-  {
-    Statement stmt;
-    if (!stmt.Prepare
-	(*FileDB->DB,
-	 "INSERT INTO reports (file, line, column, tool, message) "
-	 "VALUES (?, ?, ?, ?, ?);")) {
-      return false;
-    }
-    sqlite3_bind_int64(stmt.Ptr, 1, FID);
-    sqlite3_bind_int64(stmt.Ptr, 2, Line);
-    sqlite3_bind_int64(stmt.Ptr, 3, Column);
-    sqlite3_bind_text(stmt.Ptr, 4, Tool, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt.Ptr, 5, Message.data(), Message.size(),
-		      SQLITE_TRANSIENT);
-    if (stmt.StepRetryOnLocked() != SQLITE_DONE) {
-      FileDB->DB->SetError(sqlite3_sql(stmt.Ptr));
-      return false;
-    }
-    return true;
   }
 
   static CXXMethodDecl *getMethodDecl(const CXXMemberCallExpr *Expr) {
