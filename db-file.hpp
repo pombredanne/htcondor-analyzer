@@ -2,6 +2,9 @@
 
 #include "db.hpp"
 
+#include <map>
+#include <memory>
+
 struct FileIdentification {
   std::string Path; // canonical path
   time_t Mtime;
