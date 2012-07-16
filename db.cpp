@@ -271,21 +271,3 @@ Statement::Prepare(Database &DB, const char *sql)
   swap(stmt);
   return true;
 }
-
-int
-Statement::StepRetryOnLocked()
-{
-  int ret = sqlite3_step(Ptr);
-  if (ret != SQLITE_LOCKED && ret != SQLITE_BUSY) {
-    return ret;
-  }
-  time_t end = time(nullptr) + 15; // retry for 15 seconds
-  do {
-    RandomSleep(100);
-    ret = sqlite3_step(Ptr);
-    if (ret != SQLITE_LOCKED && ret != SQLITE_BUSY) {
-      return ret;
-    }
-  } while (time(nullptr) <= end);
-  return ret;
-}
