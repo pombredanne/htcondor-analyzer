@@ -71,9 +71,16 @@ public:
   }
 
   virtual void HandleTranslationUnit(ASTContext &Context) {
-    Visitor visitor(FileDB, Context);
+    if (Context.getDiagnostics().hasErrorOccurred()) {
+      return;
+    }
     RecordFiles(Context);
+    Visitor visitor(FileDB, Context);
     visitor.TraverseDecl(Context.getTranslationUnitDecl());
+    if (Context.getDiagnostics().hasErrorOccurred()) {
+      return;
+    }
+    FileDB->Commit();
   }
 
   void RecordFiles(ASTContext &Context)
@@ -91,10 +98,7 @@ public:
       if (!FEntry) {
 	continue;
       }
-      if (!FileDB->MarkForProcessing(FEntry->getName())) {
-	FatalError(Context.getDiagnostics(), FileDB->ErrorMessage());
-	break;
-      }
+      FileDB->MarkForProcessing(FEntry->getName());
     }
   }
 };

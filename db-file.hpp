@@ -27,9 +27,12 @@ public:
 
   bool Report(const char *Path,
 	      unsigned Line, unsigned Column, const char *Tool,
-	      const std::string &Message);
+	      std::string Message);
 
   // Record that the file is subject to processing.  A database entry
   // is added, masking previous reports for the same file.
-  bool MarkForProcessing(const char *Path);
+  void MarkForProcessing(const char *Path);
+
+  // Write the report to the database.
+  bool Commit();
 };

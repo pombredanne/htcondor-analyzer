@@ -3,6 +3,7 @@
 #include "util.hpp"
 
 #include <map>
+#include <vector>
 
 #include <limits.h>
 #include <sys/stat.h>
@@ -29,64 +30,167 @@ FileIdentification::FileIdentification(const char *path)
 // FileIdentificationDatabase
 
 struct FileIdentificationDatabase::Impl {
-  typedef unsigned ID;
   std::shared_ptr<Database> DB;
-  std::map<std::string, unsigned> PathToID;
+
+  typedef sqlite_int64 FileID;
+
+  struct FileTableEntry {
+    FileIdentification Ident;
+    FileID ID;
+
+    FileTableEntry(const std::string &Path)
+      : Ident(Path.c_str()), ID(0)
+    {
+    }
+  };
+
+  std::map<std::string, std::shared_ptr<FileTableEntry>> FTable;
+  std::vector<std::string> TouchedFiles;
+
+  struct Report {
+    std::shared_ptr<FileTableEntry> FI;
+    unsigned Line;
+    unsigned Column;
+    std::string Tool;
+    std::string Message;
+
+    Report(std::shared_ptr<FileTableEntry> fi,
+	   unsigned line,
+	   unsigned column,
+	   std::string tool,
+	   std::string message)
+      : FI(std::move(fi)),
+	Line(line),
+	Column(column),
+	Tool(std::move(tool)),
+	Message(std::move(message))
+    {
+    }
+  };
+
+  std::vector<Report> Reports;
 
   Impl(std::shared_ptr<Database> db)
     : DB(std::move(db))
   {
   }
 
-  ID Resolve(const char *Path)
+  std::shared_ptr<FileTableEntry> Resolve(const std::string &Path)
   {
-    std::string PathS(Path);
-    auto p = PathToID.find(PathS);
-    if (p == PathToID.end()) {
-      FileIdentification FI(Path);
-      if (FI.Valid()) {
-	p = PathToID.find(FI.Path);
-	if (p == PathToID.end()) {
-	  ID id = insertIntoDB(FI);
-	  if (id != 0) {
-	    PathToID[Path] = id;
-	    PathToID[FI.Path] = id;
-	  }
-	  return id;
-	} else {
-	  PathToID[PathS] = p->second;
-	}
+    auto p = FTable.find(Path);
+    if (p == FTable.end()) {
+      auto FTE = std::make_shared<FileTableEntry>(Path);
+      if (FTE->Ident.Valid()) {
+	p = FTable.find(FTE->Ident.Path);
+	if (p == FTable.end()) {
+	  FTable[Path] = FTE;
+	  FTable[FTE->Ident.Path] = FTE;
+	  return FTE;
+	} 
+	FTable[Path] = p->second;
       } else {
 	// Could not resolve file name.
 	DB->ErrorMessage = "could not find file on disk: ";
-	DB->ErrorMessage += PathS;
-	return 0;
+	DB->ErrorMessage += Path;
+	return nullptr;
       }
     }
     return p->second;
   }
 
-  ID insertIntoDB(const FileIdentification &FI)
+  bool Record
+    (const char *Path, unsigned Line, unsigned Column,
+     const char *Tool, const std::string &Message)
   {
-    Statement stmt;
-    if (!stmt.Prepare
-	(*DB, "INSERT INTO files (path, mtime, size) VALUES (?, ?, ?)")) {
-      return 0;
+    auto FTE = Resolve(Path);
+    if (FTE == nullptr) {
+      return false;
     }
-    sqlite3_bind_text(stmt.Ptr, 1, FI.Path.data(), FI.Path.size(),
+    Reports.emplace_back(Report(std::move(FTE), Line, Column,
+				Tool, Message));
+    return true;
+  }
+
+  bool Commit()
+  {
+    TransactionResult result =
+      DB->Transact([&]() -> TransactionResult {
+	  for (auto const &Path : TouchedFiles) {
+	    if (!MarkAsProcessed(Path)) {
+	      return TransactionResult::ERROR;
+	    }
+	  }
+
+	  Statement stmt;
+	  if (!stmt.Prepare
+	      (*DB, "INSERT INTO files (path, mtime, size) "
+	       "VALUES (?, ?, ?)")) {
+	    return TransactionResult::ERROR;
+	  }
+	  for (auto const &E : FTable) {
+	    const FileIdentification &FI(E.second->Ident);
+	    sqlite3_bind_text(stmt.Ptr, 1, FI.Path.data(), FI.Path.size(),
+			      SQLITE_TRANSIENT);
+	    sqlite3_bind_int64(stmt.Ptr, 2, FI.Mtime);
+	    sqlite3_bind_int64(stmt.Ptr, 3, FI.Size);
+	    if (sqlite3_step(stmt.Ptr) != SQLITE_DONE) {
+	      return DB->SetTransactionError(sqlite3_sql(stmt.Ptr));
+	    }
+	    E.second->ID = sqlite3_last_insert_rowid(DB->Ptr);
+	  }
+
+	  if (!stmt.Prepare
+	      (*DB,
+	       "INSERT INTO reports (file, line, column, tool, message) "
+	       "VALUES (?, ?, ?, ?, ?);")) {
+	    return TransactionResult::ERROR;
+	  }
+
+	  for (auto const &R : Reports) {
+	    sqlite3_reset(stmt.Ptr);
+	    sqlite3_bind_int64(stmt.Ptr, 1, R.FI->ID);
+	    sqlite3_bind_int64(stmt.Ptr, 2, R.Line);
+	    sqlite3_bind_int64(stmt.Ptr, 3, R.Column);
+	    sqlite3_bind_text(stmt.Ptr, 4, R.Tool.data(), R.Tool.size(),
+			      SQLITE_TRANSIENT);
+	    sqlite3_bind_text(stmt.Ptr, 5, R.Message.data(), R.Message.size(),
+			      SQLITE_TRANSIENT);
+	    if (sqlite3_step(stmt.Ptr) != SQLITE_DONE) {
+	      return DB->SetTransactionError(sqlite3_sql(stmt.Ptr));
+	    }
+	  }
+	  return TransactionResult::COMMIT;
+	});
+    return result == TransactionResult::COMMIT;
+  }
+
+  bool MarkAsProcessed(const std::string &Path)
+  {
+    std::string Absolute;
+    if (!ResolvePath(Path.c_str(), Absolute)) {
+      DB->ErrorMessage = "could not find file on disk: ";
+      DB->ErrorMessage += Path;
+      return false;
+    }
+
+    Statement SQL;
+    if (!SQL.Prepare(*DB, "SELECT id FROM files "
+		     "WHERE path = ? ORDER BY id DESC LIMIT 1")) {
+      return false;
+    }
+    sqlite3_bind_text(SQL.Ptr, 1, Absolute.data(), Absolute.size(),
 		      SQLITE_TRANSIENT);
-    sqlite3_bind_int64(stmt.Ptr, 2, FI.Mtime);
-    sqlite3_bind_int64(stmt.Ptr, 3, FI.Size);
-    if (stmt.StepRetryOnLocked() != SQLITE_DONE) {
-      DB->SetError(sqlite3_sql(stmt.Ptr));
-      return 0;
+    int ret = SQL.StepRetryOnLocked();
+    if (ret == SQLITE_DONE) {
+      // File is not in the database.  No need to mask older errors.
+      return true;
     }
-    sqlite3_int64 rowid = sqlite3_last_insert_rowid(DB->Ptr);
-    if (rowid <= 0 || rowid > UINT_MAX) {
-      DB->ErrorMessage = "row ID outside range";
-      return 0;
+    if (ret != SQLITE_ROW) {
+      return false;
     }
-    return rowid;
+    // Add an entry for the file, hiding the previous reports.
+    // TODO: Only hide changed files? What about plugin changes?
+    return Resolve(Path) != nullptr;
   }
 };
 
@@ -112,58 +216,20 @@ std::string FileIdentificationDatabase::ErrorMessage() const
 bool
 FileIdentificationDatabase::Report
   (const char *Path, unsigned Line, unsigned Column,
-   const char *Tool, const std::string &Message)
+   const char *Tool, std::string Message)
 {
-  Impl::ID FID = impl->Resolve(Path);
-  if (FID == 0) {
-    return false;
-  }
+  return impl->Record(Path, Line, Column, Tool, std::move(Message));
+}
 
-  Statement stmt;
-  if (!stmt.Prepare
-      (*impl->DB,
-       "INSERT INTO reports (file, line, column, tool, message) "
-       "VALUES (?, ?, ?, ?, ?);")) {
-    return false;
-  }
-  sqlite3_bind_int64(stmt.Ptr, 1, FID);
-  sqlite3_bind_int64(stmt.Ptr, 2, Line);
-  sqlite3_bind_int64(stmt.Ptr, 3, Column);
-  sqlite3_bind_text(stmt.Ptr, 4, Tool, -1, SQLITE_TRANSIENT);
-  sqlite3_bind_text(stmt.Ptr, 5, Message.data(), Message.size(),
-		    SQLITE_TRANSIENT);
-  if (stmt.StepRetryOnLocked() != SQLITE_DONE) {
-    impl->DB->SetError(sqlite3_sql(stmt.Ptr));
-    return false;
-  }
-  return true;
+void
+FileIdentificationDatabase::MarkForProcessing(const char *Path)
+{
+  impl->TouchedFiles.emplace_back(std::move(Path));
 }
 
 bool
-FileIdentificationDatabase::MarkForProcessing(const char *Path)
+FileIdentificationDatabase::Commit()
 {
-  FileIdentification FI(Path);
-  if (!FI.Valid()) {
-      impl->DB->ErrorMessage = "could not find file on disk: ";
-      impl->DB->ErrorMessage += Path;
-      return false;
-  }
-  Statement SQL;
-  if (!SQL.Prepare(*impl->DB, "SELECT id FROM files "
-		   "WHERE path = ? ORDER BY id DESC LIMIT 1")) {
-    return false;
-  }
-  sqlite3_bind_text(SQL.Ptr, 1, FI.Path.data(), FI.Path.size(),
-		    SQLITE_TRANSIENT);
-  int ret = SQL.StepRetryOnLocked();
-  if (ret == SQLITE_DONE) {
-    // File is not in the database.  No need to mask older errors.
-    return true;
-  }
-  if (ret != SQLITE_ROW) {
-    return false;
-  }
-  // Add an entry for the file, hiding the previous reports.
-  // TODO: Only hide changed files? What about plugin changes?
-  return impl->Resolve(Path) != 0;
+  return impl->Commit();
 }
+
