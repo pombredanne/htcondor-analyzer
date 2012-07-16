@@ -116,8 +116,9 @@ struct FileIdentificationDatabase::Impl {
     TransactionResult result =
       DB->Transact([&]() -> TransactionResult {
 	  for (auto const &Path : TouchedFiles) {
-	    if (!MarkAsProcessed(Path)) {
-	      return TransactionResult::ERROR;
+	    TransactionResult tret = MarkAsProcessed(Path);
+	    if (tret != TransactionResult::COMMIT) {
+	      return tret;
 	    }
 	  }
 
@@ -164,33 +165,36 @@ struct FileIdentificationDatabase::Impl {
     return result == TransactionResult::COMMIT;
   }
 
-  bool MarkAsProcessed(const std::string &Path)
+  TransactionResult MarkAsProcessed(const std::string &Path)
   {
     std::string Absolute;
     if (!ResolvePath(Path.c_str(), Absolute)) {
       DB->ErrorMessage = "could not find file on disk: ";
       DB->ErrorMessage += Path;
-      return false;
+      return TransactionResult::ERROR;
     }
 
     Statement SQL;
     if (!SQL.Prepare(*DB, "SELECT id FROM files "
 		     "WHERE path = ? ORDER BY id DESC LIMIT 1")) {
-      return false;
+      return TransactionResult::ERROR;
     }
     sqlite3_bind_text(SQL.Ptr, 1, Absolute.data(), Absolute.size(),
 		      SQLITE_TRANSIENT);
-    int ret = SQL.StepRetryOnLocked();
+    int ret = sqlite3_step(SQL.Ptr);
     if (ret == SQLITE_DONE) {
       // File is not in the database.  No need to mask older errors.
-      return true;
+      return TransactionResult::COMMIT;
     }
     if (ret != SQLITE_ROW) {
-      return false;
+      return DB->SetTransactionError(sqlite3_sql(SQL.Ptr));
     }
     // Add an entry for the file, hiding the previous reports.
     // TODO: Only hide changed files? What about plugin changes?
-    return Resolve(Path) != nullptr;
+    if (Resolve(Path) == nullptr) {
+      return TransactionResult::ERROR;
+    }
+    return TransactionResult::COMMIT;
   }
 };
 
