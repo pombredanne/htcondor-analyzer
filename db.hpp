@@ -6,6 +6,12 @@
 #include <sys/types.h>
 #include <sqlite3.h>
 
+enum class TransactionResult : int {
+  COMMIT,			// Commit the transaction
+  ROLLBACK, 			// Roll back the transaction, no retry
+  RETRY, 			// Roll back and retry
+  ERROR,			// Roll back and report error
+};
 
 struct Database {
   static const char FileName[];
@@ -27,6 +33,13 @@ struct Database {
 
   // Sets ErrorMessage from the database object.
   void SetError(const char *Context=nullptr);
+
+  // Calls SetError and returns an appropriate transaction result code
+  // based on the SQLite error code.
+  TransactionResult SetTransactionError(const char *Context=nullptr);
+
+  // Run RUNNER in a transaction.
+  TransactionResult Transact(std::function<TransactionResult()> runner);
 };
 
 struct Statement {

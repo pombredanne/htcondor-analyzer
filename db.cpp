@@ -9,6 +9,19 @@
 
 const char Database::FileName[] = "condor-analyzer.sqlite";
 
+static void
+RandomSleep(unsigned ms)
+{
+  // Sleep for ms milliseconds on average.
+  usleep((rand() % (ms * 1000)) + (rand() % (ms * 1000)));
+}
+
+static inline bool
+TemporaryErrorCode(int code)
+{
+  return code == SQLITE_BUSY || code == SQLITE_LOCKED;
+}
+
 Database::Database()
   : Ptr(nullptr)
 {
@@ -56,8 +69,6 @@ namespace {
       return false;
     }
     DB.Ptr = db;
-    // TODO: this is not effective
-    sqlite3_busy_timeout(DB.Ptr, 15000); // 15 seconds
     return DB.Execute("PRAGMA foreign_keys = ON;");
   }
 }
@@ -157,6 +168,82 @@ Database::SetError(const char *Context)
   }
 }
 
+TransactionResult
+Database::SetTransactionError(const char *Context)
+{
+  SetError(Context);
+  if (TemporaryErrorCode(sqlite3_errcode(Ptr))) {
+    return TransactionResult::RETRY;
+  }
+  return TransactionResult::ERROR;
+}
+
+
+TransactionResult
+Database::Transact(std::function<TransactionResult()> runner)
+{
+  Statement stmtBegin, stmtCommit, stmtRollback;
+  if (!(stmtBegin.Prepare(*this, "BEGIN")
+	&& stmtCommit.Prepare(*this, "COMMIT")
+	&& stmtRollback.Prepare(*this, "ROLLBACK"))) {
+    return TransactionResult::ERROR;
+  }
+
+  auto Rollback = [&]() -> bool {
+    if (sqlite3_step(stmtRollback.Ptr) != SQLITE_DONE) {
+      SetError("Transact ROLLBACK");
+      return false;
+    }
+    return true;
+  };
+
+  const unsigned MaxRetries = 6;
+  for (unsigned Retries = 0; Retries < MaxRetries; ++Retries) {
+    if (Retries > 0) {
+      // Randomized exponential back-off.
+      RandomSleep(100 << (Retries - 1));
+    }
+    int ret = sqlite3_step(stmtBegin.Ptr);
+    if (ret != SQLITE_DONE) {
+      if (TemporaryErrorCode(ret)) {
+	continue;
+      }
+      SetError("Transact BEGIN");
+      return TransactionResult::ERROR;
+    }
+    TransactionResult result = runner();
+    switch (result) {
+    case TransactionResult::COMMIT:
+      ret = sqlite3_step(stmtCommit.Ptr);
+      if (ret != SQLITE_DONE) {
+	if (!Rollback()) {
+	  return TransactionResult::ERROR;
+	}
+	continue;
+      }
+      return TransactionResult::COMMIT;
+    case TransactionResult::ROLLBACK:
+      if (!Rollback()) {
+	return TransactionResult::ERROR;
+      }
+      return TransactionResult::ROLLBACK;
+    case TransactionResult::ERROR:
+      sqlite3_step(stmtRollback.Ptr); // preserve original error
+      return TransactionResult::ERROR;
+    case TransactionResult::RETRY:
+      if (!Rollback()) {
+	return TransactionResult::ERROR;
+      }
+      continue;
+    default:
+      SetError("invalid Transact runner result");
+      return TransactionResult::ERROR;
+    }
+  }
+  ErrorMessage = "could not complete Transact";
+  return TransactionResult::ERROR;
+}
+  
 //////////////////////////////////////////////////////////////////////
 // Statement
 
@@ -194,8 +281,7 @@ Statement::StepRetryOnLocked()
   }
   time_t end = time(nullptr) + 15; // retry for 15 seconds
   do {
-    // Sleep for 100ms on average.
-    usleep((rand() % 100000) + (rand() % 100000));
+    RandomSleep(100);
     ret = sqlite3_step(Ptr);
     if (ret != SQLITE_LOCKED && ret != SQLITE_BUSY) {
       return ret;
