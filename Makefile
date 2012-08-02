@@ -14,7 +14,7 @@ plugin.so: plugin.o util.o db-file.o db.o file.o
 create-db: create-db.o db.o db-file.o util.o file.o
 	g++ $(LDFLAGS) -o $@ $^ $(LLVM_LDFLAGS) $(LIBS)
 
-report: report.o db.o db-file.o db-report.o util.o file.o
+report: report.o db.o db-file.o db-report.o LineEditor.o util.o file.o
 	g++ $(LDFLAGS) -o $@ $^ $(LLVM_LDFLAGS) $(LIBS)
 
 %.o : %.cpp $(HEADER_FILES)
