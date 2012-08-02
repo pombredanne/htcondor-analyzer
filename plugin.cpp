@@ -7,6 +7,9 @@
 //   is helpful because Condor overloads sprintf() with a safer
 //   variant in which we are not interested.
 //
+// * Calls to the Condor-specific overloads of sprintf() and
+//   vsprintf() are recorded (as "sprintf-overload").
+//
 // * Calls to strcpy/strcat which copy buffers into arguments are
 //   logged because such programming patterns are usually insecure
 //   (similar to gets()).
@@ -28,6 +31,7 @@
 #include "db-file.hpp"
 
 #include <sstream>
+#include <memory>
 
 #include "clang/Frontend/FrontendPluginRegistry.h"
 #include "clang/AST/ASTConsumer.h"
@@ -188,6 +192,8 @@ private:
 		  << " auth=" << (forceAuthentication ? "true" : "false");
 	}
 	Report(Expr->getExprLoc(), "Register_Command", ostr.str());
+      } else if (isSprintfName(MethodName)) {
+	ProcessSprintfMemberCall(Expr, MethodDecl, MethodName);
       }
     }
     return true;
@@ -196,29 +202,89 @@ private:
   ////////////////////////////////////////////////////////////////////
   // sprintf
 
+  enum class SprintfTarget : int {
+    None, CharPtr, MyString, StdString, Other,
+      };
+
   bool ProcessSprintf(CallExpr *Expr)
   {
     if (FunctionDecl *Decl = Expr->getDirectCallee()) {
       std::string FunctionName = Decl->getNameAsString();
-      if (isSprintfName(FunctionName) && hasCharBuffer(Decl)) {
-	Report(Expr->getExprLoc(), "sprintf", FunctionName);
+      if (isSprintfName(FunctionName)) {
+	SprintfTarget Target = getSprintfTarget(Decl);
+	switch (Target) {
+	case SprintfTarget::None:
+	  break;
+	case SprintfTarget::CharPtr:
+	  Report(Expr->getExprLoc(), "sprintf", FunctionName);
+	  break;
+	case SprintfTarget::MyString:
+	  Report(Expr->getExprLoc(), "sprintf-overload",
+		 FunctionName + "(MyString)");
+	  break;
+	case SprintfTarget::StdString:
+	  Report(Expr->getExprLoc(), "sprintf-overload",
+		 FunctionName + "(std::string)");
+	  break;
+	case SprintfTarget::Other:
+	  {
+	    std::ostringstream ostr;
+	    ostr << FunctionName << '(';
+	    {
+	      llvm::raw_os_ostream OS(ostr);
+#if 0
+	      std::unique_ptr<ASTConsumer> Printer
+		(Context.CreateASTPrinter(OS));
+	      Printer->TraverseParamVarDecl(*Decl->param_begin);
+#else
+	      OS << "<unknown>";
+#endif
+	    }
+	    ostr << ')';
+	    Report(Expr->getExprLoc(), "sprintf-overload", ostr.str());
+	  }
+	  break;
+	}
       }
     }
     return true;
+  }
+
+  void ProcessSprintfMemberCall(const CXXMemberCallExpr *Expr,
+				const CXXMethodDecl *Decl,
+				const std::string &MethodName)
+  {
+    Report(Expr->getExprLoc(), "sprintf-overload", MethodName + "(" +
+	   Decl->getParent()->getQualifiedNameAsString() + ")");
   }
 
   static bool isSprintfName(const std::string &Name) {
     return Name == "sprintf" || Name == "vsprintf";
   }
 
-  static bool hasCharBuffer(FunctionDecl *Decl) {
+  static SprintfTarget getSprintfTarget(FunctionDecl *Decl) {
     if (Decl->getNumParams() < 2) {
-      return false;
+      return SprintfTarget::None;
     }
     ParmVarDecl *First = *Decl->param_begin();
     QualType FirstType = First->getType().getCanonicalType();
-    return FirstType->isPointerType()
-      && FirstType->getPointeeType()->isCharType();
+    if (FirstType->isPointerType()
+	&& FirstType->getPointeeType()->isCharType()) {
+      return SprintfTarget::CharPtr;
+    }
+    if (FirstType->isReferenceType()) {
+      QualType RefedType = FirstType->getPointeeType();
+      if (auto StructType = dyn_cast<RecordType>(RefedType)) {
+	RecordDecl *TypeDecl = StructType->getDecl();
+	std::string Name = TypeDecl->getQualifiedNameAsString();
+	if (Name == "MyString" ) {
+	  return SprintfTarget::MyString;
+	} else if (Name == "std::basic_string") {
+	  return SprintfTarget::StdString;
+	}
+      }
+    }
+    return SprintfTarget::Other;
   }
 
   ////////////////////////////////////////////////////////////////////
