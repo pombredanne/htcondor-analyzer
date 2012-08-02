@@ -73,3 +73,24 @@ Report(Database &DB, ReportCallback CB)
   }
   return result;
 }
+
+std::string
+Carets(const std::string &Text,
+       unsigned Column, unsigned Width)
+{
+  if (Column == 0) {
+    return std::string();
+  }
+  std::string result;
+  result.reserve(Column + Width);
+  std::string::size_type end =
+    std::min(static_cast<std::string::size_type>(Column - 1), Text.size());
+  for (std::string::size_type i = 0; i < end; ++i) {
+    char ch = Text.at(i);
+    result += ch == '\t' ? '\t' : ' ';
+  }
+  for (unsigned i = 0; i < Width; ++i) {
+    result += '^';
+  }
+  return result;
+}

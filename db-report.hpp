@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <string>
 
 class Database;
 
@@ -16,3 +17,9 @@ typedef std::function<bool(const char *RelativePath,
 
 // Run the callback against the database.
 bool Report(Database &, ReportCallback);
+
+// Returns carets for the source text, starting at column.  Leading
+// characters in the text are replaced with spaces, except for tabs,
+// which are left as-is, to preserve indentation.
+std::string Carets(const std::string &Text,
+		   unsigned Column, unsigned Width);
