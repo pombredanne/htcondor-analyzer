@@ -136,6 +136,7 @@ struct FileIdentificationDatabase::Impl {
 	      // shadowing the real entry.
 	      continue;
 	    }
+	    sqlite3_reset(stmt.Ptr);
 	    sqlite3_bind_text(stmt.Ptr, 1, FI.Path.data(), FI.Path.size(),
 			      SQLITE_TRANSIENT);
 	    sqlite3_bind_int64(stmt.Ptr, 2, FI.Mtime);
