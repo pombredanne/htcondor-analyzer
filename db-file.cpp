@@ -115,18 +115,19 @@ struct FileIdentificationDatabase::Impl {
   {
     TransactionResult result =
       DB->Transact([&]() -> TransactionResult {
+	  TransactionResult tret;
 	  for (auto const &Path : TouchedFiles) {
-	    TransactionResult tret = MarkAsProcessed(Path);
+	    tret = MarkAsProcessed(Path);
 	    if (tret != TransactionResult::COMMIT) {
 	      return tret;
 	    }
 	  }
 
 	  Statement stmt;
-	  if (!stmt.Prepare
-	      (*DB, "INSERT INTO files (path, mtime, size) "
-	       "VALUES (?, ?, ?)")) {
-	    return TransactionResult::ERROR;
+	  tret = stmt.TxnPrepare
+	    (*DB, "INSERT INTO files (path, mtime, size) VALUES (?, ?, ?)");
+	  if (tret != TransactionResult::COMMIT) {
+	    return tret;
 	  }
 	  for (auto const &E : FTable) {
 	    const FileIdentification &FI(E.second->Ident);
@@ -140,11 +141,12 @@ struct FileIdentificationDatabase::Impl {
 	    E.second->ID = sqlite3_last_insert_rowid(DB->Ptr);
 	  }
 
-	  if (!stmt.Prepare
-	      (*DB,
-	       "INSERT INTO reports (file, line, column, tool, message) "
-	       "VALUES (?, ?, ?, ?, ?);")) {
-	    return TransactionResult::ERROR;
+	  tret = stmt.TxnPrepare
+	    (*DB,
+	     "INSERT INTO reports (file, line, column, tool, message) "
+	     "VALUES (?, ?, ?, ?, ?);");
+	  if (tret != TransactionResult::COMMIT) {
+	    return tret;
 	  }
 
 	  for (auto const &R : Reports) {
@@ -175,9 +177,11 @@ struct FileIdentificationDatabase::Impl {
     }
 
     Statement SQL;
-    if (!SQL.Prepare(*DB, "SELECT id FROM files "
-		     "WHERE path = ? ORDER BY id DESC LIMIT 1")) {
-      return TransactionResult::ERROR;
+    TransactionResult tret =
+      SQL.TxnPrepare(*DB, "SELECT id FROM files "
+		     "WHERE path = ? ORDER BY id DESC LIMIT 1");
+    if (tret != TransactionResult::COMMIT) {
+      return tret;
     }
     sqlite3_bind_text(SQL.Ptr, 1, Absolute.data(), Absolute.size(),
 		      SQLITE_TRANSIENT);
