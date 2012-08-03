@@ -84,7 +84,10 @@ public:
     if (Context.getDiagnostics().hasErrorOccurred()) {
       return;
     }
-    FileDB->Commit();
+    if (!FileDB->Commit()) {
+      FatalError(Context.getDiagnostics(),
+		 "commit: " + FileDB->ErrorMessage());
+    }
   }
 
   void RecordFiles(ASTContext &Context)
