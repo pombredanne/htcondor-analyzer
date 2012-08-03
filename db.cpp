@@ -261,7 +261,7 @@ Statement::Prepare(Database &DB, const char *sql)
   const char *tail;
   if (sqlite3_prepare_v2
       (DB.Ptr, sql, -1, &stmt.Ptr, &tail) != SQLITE_OK) {
-    DB.SetError("Prepare");
+    DB.SetError((std::string("Prepare: ") + sql).c_str());
     return false;
   }
   if (*tail) {
