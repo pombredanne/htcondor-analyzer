@@ -190,6 +190,7 @@ Database::Transact(std::function<TransactionResult()> runner)
   }
 
   auto Rollback = [&]() -> bool {
+    sqlite3_reset(stmtRollback.Ptr);
     if (sqlite3_step(stmtRollback.Ptr) != SQLITE_DONE) {
       SetError("Transact ROLLBACK");
       return false;
@@ -203,6 +204,7 @@ Database::Transact(std::function<TransactionResult()> runner)
       // Randomized exponential back-off.
       RandomSleep(100 << (Retries - 1));
     }
+    sqlite3_reset(stmtBegin.Ptr);
     int ret = sqlite3_step(stmtBegin.Ptr);
     if (ret != SQLITE_DONE) {
       if (TemporaryErrorCode(ret)) {
@@ -214,6 +216,7 @@ Database::Transact(std::function<TransactionResult()> runner)
     TransactionResult result = runner();
     switch (result) {
     case TransactionResult::COMMIT:
+      sqlite3_reset(stmtBegin.Ptr);
       ret = sqlite3_step(stmtCommit.Ptr);
       if (ret != SQLITE_DONE) {
 	if (!Rollback()) {
@@ -228,6 +231,7 @@ Database::Transact(std::function<TransactionResult()> runner)
       }
       return TransactionResult::ROLLBACK;
     case TransactionResult::ERROR:
+      sqlite3_reset(stmtRollback.Ptr);
       sqlite3_step(stmtRollback.Ptr); // preserve original error
       return TransactionResult::ERROR;
     case TransactionResult::RETRY:
