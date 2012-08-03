@@ -53,4 +53,5 @@ struct Statement {
 
   void Close();
   bool Prepare(Database &DB, const char *sql);
+  TransactionResult TxnPrepare(Database &DB, const char *sql);
 };

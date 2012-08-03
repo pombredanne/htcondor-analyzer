@@ -271,3 +271,20 @@ Statement::Prepare(Database &DB, const char *sql)
   swap(stmt);
   return true;
 }
+
+TransactionResult
+Statement::TxnPrepare(Database &DB, const char *sql)
+{
+  Statement stmt;
+  const char *tail;
+  if (sqlite3_prepare_v2
+      (DB.Ptr, sql, -1, &stmt.Ptr, &tail) != SQLITE_OK) {
+    return DB.SetTransactionError((std::string("Prepare: ") + sql).c_str());
+  }
+  if (*tail) {
+    DB.ErrorMessage = "trailing characters in SQL statement";
+    return TransactionResult::ERROR;
+  }
+  swap(stmt);
+  return TransactionResult::COMMIT;
+}
