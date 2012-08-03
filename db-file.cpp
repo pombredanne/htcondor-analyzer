@@ -131,6 +131,11 @@ struct FileIdentificationDatabase::Impl {
 	  }
 	  for (auto const &E : FTable) {
 	    const FileIdentification &FI(E.second->Ident);
+	    if (E.first != FI.Path) {
+	      // This is a duplicate, secondary entry.  Avoid
+	      // shadowing the real entry.
+	      continue;
+	    }
 	    sqlite3_bind_text(stmt.Ptr, 1, FI.Path.data(), FI.Path.size(),
 			      SQLITE_TRANSIENT);
 	    sqlite3_bind_int64(stmt.Ptr, 2, FI.Mtime);
