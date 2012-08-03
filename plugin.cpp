@@ -368,6 +368,7 @@ private:
 	message += "const";
 	Report(Expr->getExprLoc(), "MyString", message);
       }
+      break;
     case OO_PlusEqual:
       if (matchTypeAgainstMyString(Expr, Type)) {
 	Type = Expr->getArg(1)->getType().getCanonicalType()
@@ -379,6 +380,7 @@ private:
 	  Report(Expr->getExprLoc(), "MyString", "operator+= " + TypeName);
 	}
       }
+      break;
     default:
       ;
     }
