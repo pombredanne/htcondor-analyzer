@@ -257,7 +257,8 @@ private:
 				const CXXMethodDecl *Decl,
 				const std::string &MethodName)
   {
-    Report(Expr->getExprLoc(), "sprintf-overload", MethodName + "(" +
+    Report(Expr->getCallee()->getExprLoc(),
+	   "sprintf-overload", MethodName + "(" +
 	   Decl->getParent()->getQualifiedNameAsString() + ")");
   }
 
