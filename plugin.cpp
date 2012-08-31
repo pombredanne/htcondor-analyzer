@@ -32,6 +32,7 @@
 
 #include <sstream>
 #include <memory>
+#include <map>
 
 #include "clang/Frontend/FrontendPluginRegistry.h"
 #include "clang/AST/ASTConsumer.h"
@@ -129,11 +130,13 @@ public:
 
   bool VisitCXXMemberCallExpr(CXXMemberCallExpr *Expr)
   {
+    ProcessSizeofCallExpr(Expr);
     return ProcessRegisterCommand(Expr);
   }
 
   bool VisitCallExpr(CallExpr *Expr)
   {
+    ProcessSizeofCallExpr(Expr);
     return ProcessSprintf(Expr) | ProcessStrcpy(Expr);
   }
 
@@ -395,6 +398,85 @@ private:
     Type = Expr->getArg(0)->getType();
     QualType UType = Type.getCanonicalType().getUnqualifiedType();
     return UType.getAsString() == "class MyString";
+  }
+
+  ////////////////////////////////////////////////////////////////////
+  // sizeof and pointers
+
+  void ProcessSizeofCallExpr(CallExpr *Call)
+  {
+    // indexed by argument position
+    std::map<unsigned, const Expr *> SizeofArguments; 
+
+    // Find sizeof with pointer arguments.
+    unsigned NumArgs = Call->getNumArgs();
+    for (unsigned i = 0; i < NumArgs; ++i) {
+      auto ArgExpr = ExtractSizeofPointer(Call->getArg(i));
+      if (ArgExpr != nullptr) {
+	SizeofArguments[i] = ArgExpr;
+      }
+    }
+
+    // Check for exact matches with other arguments.
+    auto end = SizeofArguments.end();
+    if (!SizeofArguments.empty()) {
+      for (unsigned i = 0; i < NumArgs; ++i) {
+	for (auto p = SizeofArguments.begin(); p != end; ++p) {
+	  if (p->first == i) {
+	    continue;
+	  }
+	  if (EquivalentExpr(Call->getArg(i), p->second)) {
+	    std::ostringstream ostr;
+	    ostr << "pointer=" << i << ", sizeof=" << p->first;
+	    Report(Call->getArg(p->first)->getExprLoc(),
+		   "sizeof-pointer", ostr.str());
+	    return;
+	  }
+	}
+      }
+    }
+  }
+
+  const Expr *ExtractSizeofPointer(const Expr *E)
+  {
+    if (auto SE = dyn_cast<SizeOfAlignOfExpr>(E->IgnoreParenCasts())) {
+      if (SE->isSizeOf() && !SE->isArgumentType()) {
+	E = SE->getArgumentExpr()->IgnoreParenCasts();
+	if (E->getType()->isPointerType()) {
+	  return E;
+	}
+      }
+    }
+    return nullptr;
+  }
+
+  bool EquivalentExpr(const Expr *L, const Expr *R)
+  {
+    L = L->IgnoreParenCasts();
+    R = R->IgnoreParenCasts();
+    
+    if (auto LD = dyn_cast<DeclRefExpr>(L)) {
+      if (auto RD = dyn_cast<DeclRefExpr>(R)) {
+	return LD->getDecl() == RD->getDecl();
+      }
+      return false;
+    }
+    if (auto LO = dyn_cast<UnaryOperator>(L)) {
+      if (auto RO = dyn_cast<UnaryOperator>(R)) {
+	return LO->getOpcode() == RO->getOpcode()
+	  && EquivalentExpr(LO->getSubExpr(), RO->getSubExpr());
+      }
+      return false;
+    }
+    if (auto LO = dyn_cast<BinaryOperator>(L)) {
+      if (auto RO = dyn_cast<BinaryOperator>(R)) {
+	return LO->getOpcode() == RO->getOpcode()
+	  && EquivalentExpr(LO->getLHS(), RO->getLHS())
+	  && EquivalentExpr(LO->getRHS(), RO->getRHS());
+      }
+      return false;
+    }
+    return false;
   }
 
   ////////////////////////////////////////////////////////////////////
