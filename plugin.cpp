@@ -409,6 +409,9 @@ private:
     std::map<unsigned, const Expr *> SizeofArguments; 
 
     // Find sizeof with pointer arguments.
+    // ??? This shoud generalize to sizeofs of non-array arguments
+    // ??? and we could check if the same expression is used
+    // ??? in a non-reference-taking context in the parameter list.
     unsigned NumArgs = Call->getNumArgs();
     for (unsigned i = 0; i < NumArgs; ++i) {
       auto ArgExpr = ExtractSizeofPointer(Call->getArg(i));
