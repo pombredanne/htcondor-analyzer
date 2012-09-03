@@ -441,8 +441,8 @@ private:
 
   const Expr *ExtractSizeofPointer(const Expr *E)
   {
-    if (auto SE = dyn_cast<SizeOfAlignOfExpr>(E->IgnoreParenCasts())) {
-      if (SE->isSizeOf() && !SE->isArgumentType()) {
+    if (auto SE = dyn_cast<UnaryExprOrTypeTraitExpr>(E->IgnoreParenCasts())) {
+      if (SE->getKind() == UETT_SizeOf && !SE->isArgumentType()) {
 	E = SE->getArgumentExpr()->IgnoreParenCasts();
 	if (E->getType()->isPointerType()) {
 	  return E;
