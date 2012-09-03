@@ -311,7 +311,7 @@ private:
   }
 
   static bool isStrcpyName(const std::string &Name) {
-    return Name == "strcpy" || Name == "strcat";
+    return Name == "strcpy" || Name == "strcat" || Name == "sprintf";
   }
 
   static bool parameterNameInArgument(CallExpr *Expr, std::string &name) {
@@ -439,12 +439,21 @@ private:
     }
   }
 
+  // Recognizes sizeof(ptr) and sizeof(ptr)-expr.
   const Expr *ExtractSizeofPointer(const Expr *E)
   {
-    if (auto SE = dyn_cast<UnaryExprOrTypeTraitExpr>(E->IgnoreParenCasts())) {
+    E = E->IgnoreParenCasts();
+    if (auto SE = dyn_cast<UnaryExprOrTypeTraitExpr>(E)) {
       if (SE->getKind() == UETT_SizeOf && !SE->isArgumentType()) {
 	E = SE->getArgumentExpr()->IgnoreParenCasts();
 	if (E->getType()->isPointerType()) {
+	  return E;
+	}
+      }
+    } else if (auto O = dyn_cast<BinaryOperator>(E)) {
+      if (O->getOpcode() == BO_Sub) {
+	E = ExtractSizeofPointer(O->getLHS());
+	if (E != nullptr) {
 	  return E;
 	}
       }
