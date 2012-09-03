@@ -162,14 +162,14 @@ private:
 	  return true;
 	}
 
-	llvm::APSInt command(0);
+	llvm::APSInt command;
 	if (!Expr->getArg(0)->EvaluateAsInt(command, Context)) {
 	  Report(Expr->getExprLoc(), "Register_Command",
 		 "call with non-constant command");
 	  return true;
 	}
 
-	llvm::APSInt perm(0);	// default is ALLOW
+	llvm::APSInt perm;	// default is ALLOW
 	if (numArgs >= 6) {
 	  if (!Expr->getArg(5)->EvaluateAsInt(perm, Context)) {
 	    Report(Expr->getExprLoc(), "Register_Command",
