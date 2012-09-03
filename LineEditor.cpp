@@ -1,5 +1,7 @@
 #include "LineEditor.hpp"
 
+#include <unistd.h>
+
 #include <algorithm>
 #include <fstream>
 #include <string>

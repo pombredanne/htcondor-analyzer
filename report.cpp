@@ -2,6 +2,7 @@
 #include "db-report.hpp"
 #include "LineEditor.hpp"
 
+#include <getopt.h>
 #include <stdio.h>
 
 int

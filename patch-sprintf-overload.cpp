@@ -2,6 +2,8 @@
 #include "db-report.hpp"
 #include "LineEditor.hpp"
 
+#include <getopt.h>
+
 #include <cstring>
 #include <string>
 #include <map>
