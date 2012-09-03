@@ -50,18 +50,18 @@ using namespace clang;
 namespace {
 
 void
-FatalError(Diagnostic &D, const std::string &message)
+FatalError(DiagnosticsEngine &D, const std::string &message)
 {
   unsigned Fatal = D.getCustomDiagID
-    (Diagnostic::Fatal, "(condor-analysis) " + message);
+    (DiagnosticsEngine::Fatal, "(condor-analysis) " + message);
   D.Report(Fatal);
 }
 
 void
-FatalError(Diagnostic &D, SourceLocation Pos, const std::string &message)
+FatalError(DiagnosticsEngine &D, SourceLocation Pos, const std::string &message)
 {
   unsigned Fatal = D.getCustomDiagID
-    (Diagnostic::Fatal, "(condor-analysis) " + message);
+    (DiagnosticsEngine::Fatal, "(condor-analysis) " + message);
   D.Report(Pos, Fatal);
 }
 
@@ -162,21 +162,20 @@ private:
 	  return true;
 	}
 
-	if (!Expr->getArg(0)->isEvaluatable(Context)) {
+	llvm::APSInt command(0);
+	if (!Expr->getArg(0)->EvaluateAsInt(command, Context)) {
 	  Report(Expr->getExprLoc(), "Register_Command",
 		 "call with non-constant command");
 	  return true;
 	}
-	llvm::APSInt command = Expr->getArg(0)->EvaluateAsInt(Context);
 
 	llvm::APSInt perm(0);	// default is ALLOW
 	if (numArgs >= 6) {
-	  if (!Expr->getArg(5)->isEvaluatable(Context)) {
+	  if (!Expr->getArg(5)->EvaluateAsInt(perm, Context)) {
 	    Report(Expr->getExprLoc(), "Register_Command",
 		   "call with non-constant perm");
 	    return true;
 	  }
-	  perm = Expr->getArg(5)->EvaluateAsInt(Context);
 	}
 
 	bool forceAuthentication = false;
