@@ -14,6 +14,8 @@
 //   logged because such programming patterns are usually insecure
 //   (similar to gets()).
 //
+// * Pointer arithmetic is flagged as "pointer-arith".
+//
 // The results are stored in an SQLite database
 // "condor-analyzer.sqlite", which must be located in a parent
 // directory.  This database has to be created manually, using the
@@ -143,6 +145,18 @@ public:
   bool VisitCXXOperatorCallExpr(CXXOperatorCallExpr *Expr)
   {
     return ProcessMyStringOperator(Expr);
+  }
+
+  bool VisitBinaryOperator(BinaryOperator *Expr)
+  {
+    PointerArithProcessBinaryOperator(Expr);
+    return true;
+  }
+
+  bool VisitArraySubscriptExpr(ArraySubscriptExpr *Expr)
+  {
+    PointerArithProcessSubscript(Expr);
+    return true;
   }
 
 private:
@@ -488,6 +502,56 @@ private:
       return false;
     }
     return false;
+  }
+
+  ////////////////////////////////////////////////////////////////////
+  // Pointer arithmetic
+
+  // TODO: Flag ++, --, += , -=.  Catch simple subscripts which are
+  // statically within array bounds.
+
+  void PointerArithProcessBinaryOperator(BinaryOperator *Expr)
+  {
+    BinaryOperatorKind Kind = Expr->getOpcode();
+    if (Kind == BO_Add || Kind == BO_Sub) {
+      unsigned Pointers = 0;
+      if (Expr->getLHS()->getType()->isPointerType()
+	  || Expr->getLHS()->getType()->isArrayType()) {
+	++Pointers;
+      }
+      if (Expr->getRHS()->getType()->isPointerType()
+	  || Expr->getRHS()->getType()->isArrayType()) {
+	++Pointers;
+      }
+      switch (Pointers) {
+      case 1:
+	Report(Expr->getExprLoc(), "pointer-arith",
+	       Kind == BO_Add ? "add" : "sub");
+	break;
+      case 2:
+	Report(Expr->getExprLoc(), "pointer-arith", "diff");
+	break;
+      }
+    }
+  }
+
+  void PointerArithProcessSubscript(ArraySubscriptExpr *E)
+  {
+    Expr *Subscript = nullptr;
+    if (E->getLHS()->getType()->isPointerType()
+	|| E->getLHS()->getType()->isArrayType()) {
+      Subscript = E->getRHS();
+    } else if (E->getRHS()->getType()->isPointerType()
+	       || E->getRHS()->getType()->isArrayType()) {
+      Subscript = E->getLHS();
+    }
+    
+    if (E != nullptr) {
+      llvm::APSInt I;
+      if (!(Subscript->EvaluateAsInt(I, Context) && I == 0)) {
+	Report(E->getExprLoc(), "pointer-arith", "subscript");
+      }
+    }
   }
 
   ////////////////////////////////////////////////////////////////////
