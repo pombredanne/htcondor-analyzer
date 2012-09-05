@@ -133,18 +133,22 @@ public:
   bool VisitCXXMemberCallExpr(CXXMemberCallExpr *Expr)
   {
     ProcessSizeofCallExpr(Expr);
-    return ProcessRegisterCommand(Expr);
+    ProcessRegisterCommand(Expr);
+    return true;
   }
 
   bool VisitCallExpr(CallExpr *Expr)
   {
     ProcessSizeofCallExpr(Expr);
-    return ProcessSprintf(Expr) | ProcessStrcpy(Expr);
+    ProcessSprintf(Expr);
+    ProcessStrcpy(Expr);
+    return true;
   }
 
   bool VisitCXXOperatorCallExpr(CXXOperatorCallExpr *Expr)
   {
-    return ProcessMyStringOperator(Expr);
+    ProcessMyStringOperator(Expr);
+    return true;
   }
 
   bool VisitBinaryOperator(BinaryOperator *Expr)
@@ -163,7 +167,7 @@ private:
   ////////////////////////////////////////////////////////////////////
   // Register_Command
 
-  bool ProcessRegisterCommand(CXXMemberCallExpr *Expr)
+  void ProcessRegisterCommand(CXXMemberCallExpr *Expr)
   {
     if (const CXXMethodDecl *MethodDecl = getMethodDecl(Expr)) {
       std::string MethodName(MethodDecl->getNameAsString());
@@ -173,14 +177,14 @@ private:
 	if (numArgs < 5 ) {
 	  Report(Expr->getExprLoc(), "Register_Command",
 		 "call without enough arguments");
-	  return true;
+	  return;
 	}
 
 	llvm::APSInt command;
 	if (!Expr->getArg(0)->EvaluateAsInt(command, Context)) {
 	  Report(Expr->getExprLoc(), "Register_Command",
 		 "call with non-constant command");
-	  return true;
+	  return;
 	}
 
 	llvm::APSInt perm;	// default is ALLOW
@@ -188,7 +192,7 @@ private:
 	  if (!Expr->getArg(5)->EvaluateAsInt(perm, Context)) {
 	    Report(Expr->getExprLoc(), "Register_Command",
 		   "call with non-constant perm");
-	    return true;
+	    return;
 	  }
 	}
 
@@ -199,7 +203,7 @@ private:
 	      && !Expr->getArg(7)->isDefaultArgument()) {
 	    Report(Expr->getExprLoc(), "Register_Command",
 		   "call with non-constant force_authentication");
-	    return true;
+	    return;
 	  }
 	}
 
@@ -215,7 +219,6 @@ private:
 	ProcessSprintfMemberCall(Expr, MethodDecl, MethodName);
       }
     }
-    return true;
   }
 
   ////////////////////////////////////////////////////////////////////
@@ -225,7 +228,7 @@ private:
     None, CharPtr, MyString, StdString, Other,
       };
 
-  bool ProcessSprintf(CallExpr *Expr)
+  void ProcessSprintf(CallExpr *Expr)
   {
     if (FunctionDecl *Decl = Expr->getDirectCallee()) {
       std::string FunctionName = Decl->getNameAsString();
@@ -266,7 +269,6 @@ private:
 	}
       }
     }
-    return true;
   }
 
   void ProcessSprintfMemberCall(const CXXMemberCallExpr *Expr,
@@ -310,7 +312,7 @@ private:
   ////////////////////////////////////////////////////////////////////
   // strcpy/strcat
 
-  bool ProcessStrcpy(CallExpr *Expr)
+  void ProcessStrcpy(CallExpr *Expr)
   {
     if (FunctionDecl *Decl = Expr->getDirectCallee()) {
       std::string FunctionName = Decl->getNameAsString();
@@ -321,7 +323,6 @@ private:
 	       FunctionName + '(' + ParameterName + ')');
       }
     }
-    return true;
   }
 
   static bool isStrcpyName(const std::string &Name) {
@@ -371,7 +372,7 @@ private:
   ////////////////////////////////////////////////////////////////////
   // MyString
 
-  bool ProcessMyStringOperator(CXXOperatorCallExpr *Expr)
+  void ProcessMyStringOperator(CXXOperatorCallExpr *Expr)
   {
     QualType Type;
     switch (Expr->getOperator()) {
@@ -400,8 +401,6 @@ private:
     default:
       ;
     }
-
-    return true;
   }
 
   // Returns true if the unqualified type is class MyString, and
