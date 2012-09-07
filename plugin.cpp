@@ -545,7 +545,7 @@ private:
       Subscript = E->getLHS();
     }
     
-    if (E != nullptr) {
+    if (Subscript != nullptr) {
       llvm::APSInt I;
       if (!(Subscript->EvaluateAsInt(I, Context) && I == 0)) {
 	Report(E->getExprLoc(), "pointer-arith", "subscript");
