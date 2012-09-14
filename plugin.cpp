@@ -151,6 +151,12 @@ public:
     return true;
   }
 
+  bool VisitUnaryOperator(UnaryOperator *Expr)
+  {
+    PointerArithProcessUnaryOperator(Expr);
+    return true;
+  }
+
   bool VisitBinaryOperator(BinaryOperator *Expr)
   {
     PointerArithProcessBinaryOperator(Expr);
@@ -506,13 +512,51 @@ private:
   ////////////////////////////////////////////////////////////////////
   // Pointer arithmetic
 
-  // TODO: Flag ++, --, += , -=.  Catch simple subscripts which are
-  // statically within array bounds.
+  // TODO: Catch simple subscripts which are statically within array
+  // bounds.
+
+  void PointerArithProcessUnaryOperator(UnaryOperator *Expr)
+  {
+    UnaryOperatorKind Kind = Expr->getOpcode();
+    const char *KindStr;
+    switch (Kind) {
+    case UO_PostInc:
+    case UO_PreInc:
+      KindStr = "inplace-add";
+      break;
+    case UO_PostDec:
+    case UO_PreDec:
+      KindStr = "inplace-sub";
+      break;
+    default:
+      KindStr = nullptr;
+    }
+    if (KindStr != nullptr) {
+      Report(Expr->getExprLoc(), "pointer-arith", KindStr);
+    }
+  }
 
   void PointerArithProcessBinaryOperator(BinaryOperator *Expr)
   {
     BinaryOperatorKind Kind = Expr->getOpcode();
-    if (Kind == BO_Add || Kind == BO_Sub) {
+    const char *KindStr;
+    switch (Kind) {
+    case BO_Add:
+      KindStr = "add";
+      break;
+    case BO_Sub:
+      KindStr = "sub";
+      break;
+    case BO_AddAssign:
+      KindStr = "inplace-add";
+      break;
+    case BO_SubAssign:
+      KindStr = "inplace-sub";
+      break;
+    default:
+      KindStr = nullptr;
+    }
+    if (KindStr != nullptr) {
       unsigned Pointers = 0;
       if (Expr->getLHS()->getType()->isPointerType()
 	  || Expr->getLHS()->getType()->isArrayType()) {
@@ -524,8 +568,7 @@ private:
       }
       switch (Pointers) {
       case 1:
-	Report(Expr->getExprLoc(), "pointer-arith",
-	       Kind == BO_Add ? "add" : "sub");
+	Report(Expr->getExprLoc(), "pointer-arith", KindStr);
 	break;
       case 2:
 	Report(Expr->getExprLoc(), "pointer-arith", "diff");
