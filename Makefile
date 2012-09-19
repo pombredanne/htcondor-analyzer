@@ -1,10 +1,11 @@
+LLVM_CONFIG = llvm-config
 HEADER_FILES = $(wildcard *.hpp)
 
 CXXFLAGS = -Wall -W -O2 -g -std=c++0x
 LDFLAGS = -g
 LIBS = -lsqlite3
-LLVM_CXXFLAGS := $(shell llvm-config --cxxflags) -fno-exceptions -fno-rtti
-LLVM_LDFLAGS := $(shell llvm-config --ldflags)
+LLVM_CXXFLAGS := $(shell $(LLVM_CONFIG) --cxxflags) -fno-exceptions -fno-rtti
+LLVM_LDFLAGS := $(shell $(LLVM_CONFIG) --ldflags)
 
 all: plugin.so create-db report patch-sprintf-overload
 
