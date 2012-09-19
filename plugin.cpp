@@ -16,6 +16,8 @@
 //
 // * Pointer arithmetic is flagged as "pointer-arith".
 //
+// * Calls to alloca are reported as "alloca".
+//
 // The results are stored in an SQLite database
 // "condor-analyzer.sqlite", which must be located in a parent
 // directory.  This database has to be created manually, using the
@@ -43,6 +45,7 @@
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Frontend/CompilerInstance.h"
+#include "clang/Basic/Builtins.h"
 
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/raw_os_ostream.h"
@@ -142,6 +145,7 @@ public:
     ProcessSizeofCallExpr(Expr);
     ProcessSprintf(Expr);
     ProcessStrcpy(Expr);
+    ProcessAlloca(Expr);
     return true;
   }
 
@@ -599,6 +603,27 @@ private:
       llvm::APSInt I;
       if (!(Subscript->EvaluateAsInt(I, Context) && I == 0)) {
 	Report(E->getExprLoc(), "pointer-arith", "subscript");
+      }
+    }
+  }
+
+  //////////////////////////////////////////////////////////////////////
+  // alloca
+
+  void ProcessAlloca(CallExpr *E)
+  {
+    if (Expr *Callee = E->getCallee()->IgnoreParenCasts()) {
+      if (DeclRefExpr *Ref = dyn_cast<DeclRefExpr>(Callee)) {
+	if (FunctionDecl *FD = dyn_cast<FunctionDecl>(Ref->getDecl())) {
+	  unsigned BuiltinID = FD->getBuiltinID();
+	  if (BuiltinID) {
+	    Builtin::Context Ctx;
+	  }
+	  if (BuiltinID == Builtin::BI__builtin_alloca
+	      || BuiltinID == Builtin::BIalloca) {
+	    Report(E->getExprLoc(), "alloca", "x");
+	  }
+	}
       }
     }
   }
