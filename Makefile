@@ -6,11 +6,12 @@ LDFLAGS = -g
 LIBS = -lsqlite3
 LLVM_CXXFLAGS := $(shell $(LLVM_CONFIG) --cxxflags) -fno-exceptions -fno-rtti
 LLVM_LDFLAGS := $(shell $(LLVM_CONFIG) --ldflags)
+LLVM_LIBS := $(shell $(LLVM_CONFIG) --libs support)
 
 all: plugin.so create-db report patch-sprintf-overload
 
 plugin.so: plugin.o util.o db-file.o db.o file.o
-	g++ -shared $(LDFLAGS) -o $@ $^ $(LLVM_LDFLAGS) $(LIBS)
+	g++ -shared $(LDFLAGS) -o $@ $^ $(LLVM_LDFLAGS) $(LIBS) $(LLVM_LIBS)
 
 create-db: create-db.o db.o db-file.o util.o file.o
 	g++ $(LDFLAGS) -o $@ $^ $(LLVM_LDFLAGS) $(LIBS)
