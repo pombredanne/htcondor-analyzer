@@ -69,10 +69,10 @@ FatalError(DiagnosticsEngine &D, SourceLocation Pos, const std::string &message)
 
 template <class Visitor>
 class ConsumerFromVisitor : public ASTConsumer {
-  std::shared_ptr<FileIdentificationDatabase> FileDB;
+  std::tr1::shared_ptr<FileIdentificationDatabase> FileDB;
 
 public:
-  ConsumerFromVisitor(std::shared_ptr<FileIdentificationDatabase> DB)
+  ConsumerFromVisitor(std::tr1::shared_ptr<FileIdentificationDatabase> DB)
     : FileDB(DB)
   {
   }
@@ -98,8 +98,8 @@ public:
     // TODO: Preload entries to support AST dumps/pre-compiled
     // headers.
     const SourceManager &SrcMan = Context.getSourceManager();
-    for (auto FI = SrcMan.fileinfo_begin(), end = SrcMan.fileinfo_end();
-	 FI != end; ++FI) {
+    for (SourceManager::fileinfo_iterator FI = SrcMan.fileinfo_begin(),
+	   end = SrcMan.fileinfo_end(); FI != end; ++FI) {
       SrcMgr::ContentCache *CCache = FI->second;
       const FileEntry *FEntry = CCache->ContentsEntry;
       if (!FEntry) {
@@ -120,10 +120,10 @@ public:
 
 class OuterVisitor : public RecursiveASTVisitor<OuterVisitor> {
   ASTContext &Context;
-  std::shared_ptr<FileIdentificationDatabase> FileDB;
+  std::tr1::shared_ptr<FileIdentificationDatabase> FileDB;
 
 public:
-  OuterVisitor(std::shared_ptr<FileIdentificationDatabase> DB, ASTContext &C)
+  OuterVisitor(std::tr1::shared_ptr<FileIdentificationDatabase> DB, ASTContext &C)
     : Context(C), FileDB(DB)
   {
   }
@@ -230,16 +230,21 @@ private:
   ////////////////////////////////////////////////////////////////////
   // sprintf
 
-  enum class SprintfTarget : int {
-    None, CharPtr, MyString, StdString, Other,
-      };
+  struct SprintfTarget {
+    typedef enum {
+      None, CharPtr, MyString, StdString, Other
+    } Enum;
+  private:
+    SprintfTarget();
+    ~SprintfTarget();
+  };
 
   void ProcessSprintf(CallExpr *Expr)
   {
     if (FunctionDecl *Decl = Expr->getDirectCallee()) {
       std::string FunctionName = Decl->getNameAsString();
       if (isSprintfName(FunctionName)) {
-	SprintfTarget Target = getSprintfTarget(Decl);
+	SprintfTarget::Enum Target = getSprintfTarget(Decl);
 	switch (Target) {
 	case SprintfTarget::None:
 	  break;
@@ -290,7 +295,7 @@ private:
     return Name == "sprintf" || Name == "vsprintf";
   }
 
-  static SprintfTarget getSprintfTarget(FunctionDecl *Decl) {
+  static SprintfTarget::Enum getSprintfTarget(FunctionDecl *Decl) {
     if (Decl->getNumParams() < 2) {
       return SprintfTarget::None;
     }
@@ -302,7 +307,7 @@ private:
     }
     if (FirstType->isReferenceType()) {
       QualType RefedType = FirstType->getPointeeType();
-      if (auto StructType = dyn_cast<RecordType>(RefedType)) {
+      if (const RecordType *StructType = dyn_cast<RecordType>(RefedType)) {
 	RecordDecl *TypeDecl = StructType->getDecl();
 	std::string Name = TypeDecl->getQualifiedNameAsString();
 	if (Name == "MyString" ) {
@@ -335,42 +340,43 @@ private:
     return Name == "strcpy" || Name == "strcat" || Name == "sprintf";
   }
 
+  struct ParameterNameVisitor : RecursiveASTVisitor<ParameterNameVisitor> {
+    std::string &Name;
+    bool Parameter;
+
+    ParameterNameVisitor(std::string &name)
+      : Name(name), Parameter(false)
+    {
+    }
+
+    bool VisitDeclRefExpr(DeclRefExpr *Expr) {
+      if (!Parameter) {
+	if (ParmVarDecl *Parm = dyn_cast<ParmVarDecl>(Expr->getDecl())) {
+	  Parameter = true;
+	  Name = Parm->getNameAsString();
+	}
+      }
+      return true;
+    }
+
+    bool VisitUnaryDeref(UnaryOperator *) {
+      // If we copy into a dereferenced pointer, we likely have a
+      // false positive because the pointee might have been
+      // allocated by us.
+      return false;
+    }
+
+    bool VisitMemberExpr(MemberExpr *Expr) {
+      // -> dereference is also a pointer dereference.
+      return !Expr->isArrow();
+    }
+  };
+
   static bool parameterNameInArgument(CallExpr *Expr, std::string &name) {
     if (Expr->getNumArgs() < 2) {
       return false;
     }
-    struct ParameterNameVisitor : RecursiveASTVisitor<ParameterNameVisitor> {
-      std::string &Name;
-      bool Parameter;
-
-      ParameterNameVisitor(std::string &name)
-	: Name(name), Parameter(false)
-      {
-      }
-
-      bool VisitDeclRefExpr(DeclRefExpr *Expr) {
-	if (!Parameter) {
-	  if (ParmVarDecl *Parm = dyn_cast<ParmVarDecl>(Expr->getDecl())) {
-	    Parameter = true;
-	    Name = Parm->getNameAsString();
-	  }
-	}
-	return true;
-      }
-
-      bool VisitUnaryDeref(UnaryOperator *) {
-	// If we copy into a dereferenced pointer, we likely have a
-	// false positive because the pointee might have been
-	// allocated by us.
-	return false;
-      }
-
-      bool VisitMemberExpr(MemberExpr *Expr) {
-	// -> dereference is also a pointer dereference.
-	return !Expr->isArrow();
-      }
-
-    } Visitor(name);
+    ParameterNameVisitor Visitor(name);
     Visitor.TraverseStmt(Expr->getArg(0));
     return Visitor.Parameter;
   }
@@ -424,7 +430,8 @@ private:
   void ProcessSizeofCallExpr(CallExpr *Call)
   {
     // indexed by argument position
-    std::map<unsigned, const Expr *> SizeofArguments; 
+    typedef std::map<unsigned, const Expr *> ArgMap;
+    ArgMap SizeofArguments; 
 
     // Find sizeof with pointer arguments.
     // ??? This shoud generalize to sizeofs of non-array arguments
@@ -432,17 +439,17 @@ private:
     // ??? in a non-reference-taking context in the parameter list.
     unsigned NumArgs = Call->getNumArgs();
     for (unsigned i = 0; i < NumArgs; ++i) {
-      auto ArgExpr = ExtractSizeofPointer(Call->getArg(i));
-      if (ArgExpr != nullptr) {
+      const Expr *ArgExpr = ExtractSizeofPointer(Call->getArg(i));
+      if (ArgExpr != NULL) {
 	SizeofArguments[i] = ArgExpr;
       }
     }
-
+    
     // Check for exact matches with other arguments.
-    auto end = SizeofArguments.end();
+    ArgMap::iterator end = SizeofArguments.end();
     if (!SizeofArguments.empty()) {
       for (unsigned i = 0; i < NumArgs; ++i) {
-	for (auto p = SizeofArguments.begin(); p != end; ++p) {
+	for (ArgMap::iterator p = SizeofArguments.begin(); p != end; ++p) {
 	  if (p->first == i) {
 	    continue;
 	  }
@@ -462,22 +469,22 @@ private:
   const Expr *ExtractSizeofPointer(const Expr *E)
   {
     E = E->IgnoreParenCasts();
-    if (auto SE = dyn_cast<UnaryExprOrTypeTraitExpr>(E)) {
+    if (const UnaryExprOrTypeTraitExpr *SE = dyn_cast<UnaryExprOrTypeTraitExpr>(E)) {
       if (SE->getKind() == UETT_SizeOf && !SE->isArgumentType()) {
 	E = SE->getArgumentExpr()->IgnoreParenCasts();
 	if (E->getType()->isPointerType()) {
 	  return E;
 	}
       }
-    } else if (auto O = dyn_cast<BinaryOperator>(E)) {
+    } else if (const BinaryOperator *O = dyn_cast<BinaryOperator>(E)) {
       if (O->getOpcode() == BO_Sub) {
 	E = ExtractSizeofPointer(O->getLHS());
-	if (E != nullptr) {
+	if (E != NULL) {
 	  return E;
 	}
       }
     }
-    return nullptr;
+    return NULL;
   }
 
   bool EquivalentExpr(const Expr *L, const Expr *R)
@@ -485,21 +492,21 @@ private:
     L = L->IgnoreParenCasts();
     R = R->IgnoreParenCasts();
     
-    if (auto LD = dyn_cast<DeclRefExpr>(L)) {
-      if (auto RD = dyn_cast<DeclRefExpr>(R)) {
+    if (const DeclRefExpr *LD = dyn_cast<DeclRefExpr>(L)) {
+      if (const DeclRefExpr *RD = dyn_cast<DeclRefExpr>(R)) {
 	return LD->getDecl() == RD->getDecl();
       }
       return false;
     }
-    if (auto LO = dyn_cast<UnaryOperator>(L)) {
-      if (auto RO = dyn_cast<UnaryOperator>(R)) {
+    if (const UnaryOperator *LO = dyn_cast<UnaryOperator>(L)) {
+      if (const UnaryOperator *RO = dyn_cast<UnaryOperator>(R)) {
 	return LO->getOpcode() == RO->getOpcode()
 	  && EquivalentExpr(LO->getSubExpr(), RO->getSubExpr());
       }
       return false;
     }
-    if (auto LO = dyn_cast<BinaryOperator>(L)) {
-      if (auto RO = dyn_cast<BinaryOperator>(R)) {
+    if (const BinaryOperator *LO = dyn_cast<BinaryOperator>(L)) {
+      if (const BinaryOperator *RO = dyn_cast<BinaryOperator>(R)) {
 	return LO->getOpcode() == RO->getOpcode()
 	  && EquivalentExpr(LO->getLHS(), RO->getLHS())
 	  && EquivalentExpr(LO->getRHS(), RO->getRHS());
@@ -529,9 +536,9 @@ private:
       KindStr = "inplace-sub";
       break;
     default:
-      KindStr = nullptr;
+      KindStr = NULL;
     }
-    if (KindStr != nullptr) {
+    if (KindStr != NULL) {
       Report(Expr->getExprLoc(), "pointer-arith", KindStr);
     }
   }
@@ -554,9 +561,9 @@ private:
       KindStr = "inplace-sub";
       break;
     default:
-      KindStr = nullptr;
+      KindStr = NULL;
     }
-    if (KindStr != nullptr) {
+    if (KindStr != NULL) {
       unsigned Pointers = 0;
       if (Expr->getLHS()->getType()->isPointerType()
 	  || Expr->getLHS()->getType()->isArrayType()) {
@@ -579,7 +586,7 @@ private:
 
   void PointerArithProcessSubscript(ArraySubscriptExpr *E)
   {
-    Expr *Subscript = nullptr;
+    Expr *Subscript = NULL;
     if (E->getLHS()->getType()->isPointerType()
 	|| E->getLHS()->getType()->isArrayType()) {
       Subscript = E->getRHS();
@@ -588,7 +595,7 @@ private:
       Subscript = E->getLHS();
     }
     
-    if (Subscript != nullptr) {
+    if (Subscript != NULL) {
       llvm::APSInt I;
       if (!(Subscript->EvaluateAsInt(I, Context) && I == 0)) {
 	Report(E->getExprLoc(), "pointer-arith", "subscript");
@@ -640,7 +647,7 @@ private:
 };
 
 class Action : public PluginASTAction {
-  std::shared_ptr<FileIdentificationDatabase> FileDB;
+  std::tr1::shared_ptr<FileIdentificationDatabase> FileDB;
 
 protected:
   ASTConsumer *CreateASTConsumer(CompilerInstance &, llvm::StringRef) {
@@ -654,12 +661,12 @@ protected:
       PrintHelp(llvm::errs());
     }
     
-    auto DB = std::make_shared<Database>();
+    std::tr1::shared_ptr<Database> DB(new Database);
     if (!DB->Open()) {
       FatalError(CI.getDiagnostics(), DB->ErrorMessage);
       return false;
     }
-    FileDB = std::make_shared<FileIdentificationDatabase>(DB);
+    FileDB.reset(new FileIdentificationDatabase(DB));
     return true;
   }
   void PrintHelp(llvm::raw_ostream& ros) {

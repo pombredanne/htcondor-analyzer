@@ -1,13 +1,12 @@
 #pragma once
 
-#include <memory>
+#include <tr1/memory>
 
 class LineEditor {
   struct Impl;
-  std::unique_ptr<Impl> impl;
+  std::tr1::shared_ptr<Impl> impl;
 public:
   LineEditor();
-  LineEditor(LineEditor &&);
   ~LineEditor();
 
   // Reads the file and stores it in the editor.

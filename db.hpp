@@ -2,15 +2,21 @@
 
 #include <algorithm>
 #include <string>
+#include <tr1/functional>
 
 #include <sys/types.h>
 #include <sqlite3.h>
 
-enum class TransactionResult : int {
-  COMMIT,			// Commit the transaction
-  ROLLBACK, 			// Roll back the transaction, no retry
-  RETRY, 			// Roll back and retry
-  ERROR,			// Roll back and report error
+struct TransactionResult {
+  typedef enum Enum {
+    COMMIT,			// Commit the transaction
+    ROLLBACK, 			// Roll back the transaction, no retry
+    RETRY, 			// Roll back and retry
+    ERROR			// Roll back and report error
+  } Enum;
+private:
+  TransactionResult();		// not implemented
+  ~TransactionResult();		// not implemented
 };
 
 struct Database {
@@ -21,9 +27,6 @@ struct Database {
   Database();
   ~Database();
 
-  Database(const Database &) = delete;
-  void operator=(const Database &) = delete;
-
   bool Open(const char *Path);
   bool Create(const char *Path);
   bool Open(); // from current directory or its parents
@@ -32,26 +35,30 @@ struct Database {
   bool Execute(const char *);
 
   // Sets ErrorMessage from the database object.
-  void SetError(const char *Context=nullptr);
+  void SetError(const char *Context=NULL);
 
   // Calls SetError and returns an appropriate transaction result code
   // based on the SQLite error code.
-  TransactionResult SetTransactionError(const char *Context=nullptr);
+  TransactionResult::Enum SetTransactionError(const char *Context=NULL);
 
   // Run RUNNER in a transaction.
-  TransactionResult Transact(std::function<TransactionResult()> runner);
+  TransactionResult::Enum Transact(std::tr1::function<TransactionResult::Enum()> runner);
+private:
+  Database(const Database &);	// not implemented
+  void operator=(const Database &); // not implemented
 };
 
 struct Statement {
   sqlite3_stmt *Ptr;
-  Statement() : Ptr(nullptr) { }
+  Statement() : Ptr(NULL) { }
   Statement(sqlite3_stmt *ptr) : Ptr(ptr) { }
   ~Statement() { sqlite3_finalize(Ptr); }
-  Statement(const Statement &) = delete;
-  void operator=(const Statement &) = delete;
   void swap(Statement &o) { std::swap(Ptr, o.Ptr); }
 
   void Close();
   bool Prepare(Database &DB, const char *sql);
-  TransactionResult TxnPrepare(Database &DB, const char *sql);
+  TransactionResult::Enum TxnPrepare(Database &DB, const char *sql);
+private:
+  Statement(const Statement &);	// not implemented
+  void operator=(const Statement &); // not implemented
 };

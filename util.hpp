@@ -2,7 +2,7 @@
 
 #include <string>
 #include <stdarg.h>
-
+#include <cstdlib>
 
 // Like sprintf, only more secure.
 bool FormatString(std::string &target, const char *format, ...)
@@ -24,6 +24,7 @@ class FreeOnExit {
 public:
   FreeOnExit(void *ptr) : Ptr(ptr) { }
   ~FreeOnExit() { free(Ptr); }
-  FreeOnExit() = delete;
-  void operator=(const FreeOnExit &) = delete;
+private:
+  FreeOnExit();			// not implemented
+  void operator=(const FreeOnExit &); // not implemented
 };

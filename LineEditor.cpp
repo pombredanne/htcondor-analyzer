@@ -17,11 +17,6 @@ LineEditor::LineEditor()
 {
 }
 
-LineEditor::LineEditor(LineEditor &&LE)
-  : impl(std::move(LE.impl))
-{
-}
-
 LineEditor::~LineEditor()
 {
 }
@@ -43,7 +38,7 @@ LineEditor::Read(const char *Path)
     if (!in) {
       return false;
     }
-    lines.emplace_back(std::move(line));
+    lines.push_back(line);
   }
   std::swap(lines, impl->Lines);
   return true;
@@ -58,8 +53,9 @@ LineEditor::Write(const char *Path)
   if (!out.is_open()) {
     return false;
   }
-  for (const auto &Line : impl->Lines) {
-    out << Line << '\n';
+  for (std::vector<std::string>::const_iterator p = impl->Lines.begin(),
+	 end = impl->Lines.end(); p != end; ++p) {
+    out << *p << '\n';
     if (!out) {
       break;
     }

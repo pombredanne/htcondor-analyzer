@@ -23,14 +23,14 @@ TemporaryErrorCode(int code)
 }
 
 Database::Database()
-  : Ptr(nullptr)
+  : Ptr(NULL)
 {
 }
 
 Database::~Database()
 {
   sqlite3_close(Ptr);
-  Ptr = nullptr;
+  Ptr = NULL;
 }
 
 namespace {
@@ -53,8 +53,8 @@ namespace {
   {
     sqlite3 *db;
     int flags = (create ? SQLITE_OPEN_CREATE : 0) | SQLITE_OPEN_READWRITE;
-    int ret = sqlite3_open_v2(path, &db, flags, nullptr);
-    if (db == nullptr) {
+    int ret = sqlite3_open_v2(path, &db, flags, NULL);
+    if (db == NULL) {
       DB.ErrorMessage = "out of memory";
       return false;
     }
@@ -113,14 +113,14 @@ Database::Open()
   ErrorMessage += " in ";
   ErrorMessage += pathCopy;
   ErrorMessage += " or its parent directories";
-  return nullptr;
+  return NULL;
 }
 
 bool
 Database::Close()
 {
   if (sqlite3_close(Ptr) == SQLITE_OK) {
-    Ptr = nullptr;
+    Ptr = NULL;
     return true;
   }
   ErrorMessage = "sqlite3_close: ";
@@ -168,7 +168,7 @@ Database::SetError(const char *Context)
   }
 }
 
-TransactionResult
+TransactionResult::Enum
 Database::SetTransactionError(const char *Context)
 {
   SetError(Context);
@@ -178,9 +178,19 @@ Database::SetTransactionError(const char *Context)
   return TransactionResult::ERROR;
 }
 
+static bool
+Rollback(Database &DB, Statement &stmtRollback)
+{
+  sqlite3_reset(stmtRollback.Ptr);
+  if (sqlite3_step(stmtRollback.Ptr) != SQLITE_DONE) {
+    DB.SetError("Transact ROLLBACK");
+    return false;
+  }
+  return true;
+}
 
-TransactionResult
-Database::Transact(std::function<TransactionResult()> runner)
+TransactionResult::Enum
+Database::Transact(std::tr1::function<TransactionResult::Enum()> runner)
 {
   Statement stmtBegin, stmtCommit, stmtRollback;
   if (!(stmtBegin.Prepare(*this, "BEGIN")
@@ -188,15 +198,6 @@ Database::Transact(std::function<TransactionResult()> runner)
 	&& stmtRollback.Prepare(*this, "ROLLBACK"))) {
     return TransactionResult::ERROR;
   }
-
-  auto Rollback = [&]() -> bool {
-    sqlite3_reset(stmtRollback.Ptr);
-    if (sqlite3_step(stmtRollback.Ptr) != SQLITE_DONE) {
-      SetError("Transact ROLLBACK");
-      return false;
-    }
-    return true;
-  };
 
   const unsigned MaxRetries = 6;
   for (unsigned Retries = 0; Retries < MaxRetries; ++Retries) {
@@ -213,20 +214,20 @@ Database::Transact(std::function<TransactionResult()> runner)
       SetError("Transact BEGIN");
       return TransactionResult::ERROR;
     }
-    TransactionResult result = runner();
+    TransactionResult::Enum result = runner();
     switch (result) {
     case TransactionResult::COMMIT:
       sqlite3_reset(stmtBegin.Ptr);
       ret = sqlite3_step(stmtCommit.Ptr);
       if (ret != SQLITE_DONE) {
-	if (!Rollback()) {
+	if (!Rollback(*this, stmtRollback)) {
 	  return TransactionResult::ERROR;
 	}
 	continue;
       }
       return TransactionResult::COMMIT;
     case TransactionResult::ROLLBACK:
-      if (!Rollback()) {
+      if (!Rollback(*this, stmtRollback)) {
 	return TransactionResult::ERROR;
       }
       return TransactionResult::ROLLBACK;
@@ -235,7 +236,7 @@ Database::Transact(std::function<TransactionResult()> runner)
       sqlite3_step(stmtRollback.Ptr); // preserve original error
       return TransactionResult::ERROR;
     case TransactionResult::RETRY:
-      if (!Rollback()) {
+      if (!Rollback(*this, stmtRollback)) {
 	return TransactionResult::ERROR;
       }
       continue;
@@ -255,7 +256,7 @@ void
 Statement::Close()
 {
   sqlite3_finalize(Ptr);
-  Ptr = nullptr;
+  Ptr = NULL;
 }
 
 bool
@@ -276,7 +277,7 @@ Statement::Prepare(Database &DB, const char *sql)
   return true;
 }
 
-TransactionResult
+TransactionResult::Enum
 Statement::TxnPrepare(Database &DB, const char *sql)
 {
   Statement stmt;

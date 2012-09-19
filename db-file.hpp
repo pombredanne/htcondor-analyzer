@@ -2,7 +2,7 @@
 
 #include "db.hpp"
 
-#include <memory>
+#include <tr1/memory>
 
 struct FileIdentification {
   std::string Path; // canonical path
@@ -17,9 +17,9 @@ struct FileIdentification {
 class FileIdentificationDatabase {
 private:
   struct Impl;
-  std::unique_ptr<Impl> impl;
+  std::tr1::shared_ptr<Impl> impl;
 public:
-  FileIdentificationDatabase(std::shared_ptr<Database> db);
+  FileIdentificationDatabase(std::tr1::shared_ptr<Database> db);
   ~FileIdentificationDatabase();
 
   bool isOpen() const;
@@ -27,7 +27,7 @@ public:
 
   bool Report(const char *Path,
 	      unsigned Line, unsigned Column, const char *Tool,
-	      std::string Message);
+	      const std::string &Message);
 
   // Record that the file is subject to processing.  A database entry
   // is added, masking previous reports for the same file.

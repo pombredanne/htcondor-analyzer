@@ -3,6 +3,7 @@
 #include <stdexcept>
 
 #include <string.h>
+#include <stdio.h>
 
 bool
 FormatString(std::string &target, const char *format, ...)

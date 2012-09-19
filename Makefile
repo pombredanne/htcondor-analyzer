@@ -1,7 +1,7 @@
 LLVM_CONFIG = llvm-config
 HEADER_FILES = $(wildcard *.hpp)
 
-CXXFLAGS = -Wall -W -O2 -g -std=c++0x
+CXXFLAGS = -Wall -W -Wno-unused-parameter -O2 -g -std=c++03 -fno-strict-aliasing
 LDFLAGS = -g
 LIBS = -lsqlite3
 LLVM_CXXFLAGS := $(shell $(LLVM_CONFIG) --cxxflags) -fno-exceptions -fno-rtti

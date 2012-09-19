@@ -30,7 +30,7 @@ FileIdentification::FileIdentification(const char *path)
 // FileIdentificationDatabase
 
 struct FileIdentificationDatabase::Impl {
-  std::shared_ptr<Database> DB;
+  std::tr1::shared_ptr<Database> DB;
 
   typedef sqlite_int64 FileID;
 
@@ -44,42 +44,44 @@ struct FileIdentificationDatabase::Impl {
     }
   };
 
-  std::map<std::string, std::shared_ptr<FileTableEntry>> FTable;
-  std::vector<std::string> TouchedFiles;
+  typedef std::map<std::string, std::tr1::shared_ptr<FileTableEntry> > FTableMap;
+  FTableMap FTable;
+  typedef std::vector<std::string> TouchedFilesList;
+  TouchedFilesList TouchedFiles;
 
   struct Report {
-    std::shared_ptr<FileTableEntry> FI;
+    std::tr1::shared_ptr<FileTableEntry> FI;
     unsigned Line;
     unsigned Column;
     std::string Tool;
     std::string Message;
 
-    Report(std::shared_ptr<FileTableEntry> fi,
+    Report(std::tr1::shared_ptr<FileTableEntry> fi,
 	   unsigned line,
 	   unsigned column,
-	   std::string tool,
-	   std::string message)
-      : FI(std::move(fi)),
+	   const std::string& tool,
+	   const std::string& message)
+      : FI(fi),
 	Line(line),
 	Column(column),
-	Tool(std::move(tool)),
-	Message(std::move(message))
+	Tool(tool),
+	Message(message)
     {
     }
   };
 
   std::vector<Report> Reports;
 
-  Impl(std::shared_ptr<Database> db)
-    : DB(std::move(db))
+  Impl(std::tr1::shared_ptr<Database> db)
+    : DB(db)
   {
   }
 
-  std::shared_ptr<FileTableEntry> Resolve(const std::string &Path)
+  std::tr1::shared_ptr<FileTableEntry> Resolve(const std::string &Path)
   {
-    auto p = FTable.find(Path);
+    FTableMap::iterator p = FTable.find(Path);
     if (p == FTable.end()) {
-      auto FTE = std::make_shared<FileTableEntry>(Path);
+      std::tr1::shared_ptr<FileTableEntry> FTE(new FileTableEntry(Path));
       if (FTE->Ident.Valid()) {
 	p = FTable.find(FTE->Ident.Path);
 	if (p == FTable.end()) {
@@ -92,7 +94,7 @@ struct FileIdentificationDatabase::Impl {
 	// Could not resolve file name.
 	DB->ErrorMessage = "could not find file on disk: ";
 	DB->ErrorMessage += Path;
-	return nullptr;
+	return std::tr1::shared_ptr<FileTableEntry>();
       }
     }
     return p->second;
@@ -102,78 +104,82 @@ struct FileIdentificationDatabase::Impl {
     (const char *Path, unsigned Line, unsigned Column,
      const char *Tool, const std::string &Message)
   {
-    auto FTE = Resolve(Path);
-    if (FTE == nullptr) {
+    std::tr1::shared_ptr<FileTableEntry> FTE = Resolve(Path);
+    if (FTE == NULL) {
       return false;
     }
-    Reports.emplace_back(Report(std::move(FTE), Line, Column,
-				Tool, Message));
+    Reports.push_back(Report(FTE, Line, Column, Tool, Message));
     return true;
+  }
+
+  TransactionResult::Enum RunCommitTransaction()
+  {
+    TransactionResult::Enum tret;
+    for (TouchedFilesList::iterator p = TouchedFiles.begin(),
+	   end = TouchedFiles.end(); p != end; ++p) {
+      tret = MarkAsProcessed(*p);
+      if (tret != TransactionResult::COMMIT) {
+	return tret;
+      }
+    }
+
+    Statement stmt;
+    tret = stmt.TxnPrepare
+      (*DB, "INSERT INTO files (path, mtime, size) VALUES (?, ?, ?)");
+    if (tret != TransactionResult::COMMIT) {
+      return tret;
+    }
+    for (FTableMap::const_iterator p = FTable.begin(),
+	   end = FTable.end(); p != end; ++p) {
+      const FileIdentification &FI(p->second->Ident);
+      if (p->first != FI.Path) {
+	// This is a duplicate, secondary entry.  Avoid
+	// shadowing the real entry.
+	continue;
+      }
+      sqlite3_reset(stmt.Ptr);
+      sqlite3_bind_text(stmt.Ptr, 1, FI.Path.data(), FI.Path.size(),
+			SQLITE_TRANSIENT);
+      sqlite3_bind_int64(stmt.Ptr, 2, FI.Mtime);
+      sqlite3_bind_int64(stmt.Ptr, 3, FI.Size);
+      if (sqlite3_step(stmt.Ptr) != SQLITE_DONE) {
+	return DB->SetTransactionError(sqlite3_sql(stmt.Ptr));
+      }
+      p->second->ID = sqlite3_last_insert_rowid(DB->Ptr);
+    }
+
+    tret = stmt.TxnPrepare
+      (*DB,
+       "INSERT INTO reports (file, line, column, tool, message) "
+       "VALUES (?, ?, ?, ?, ?);");
+    if (tret != TransactionResult::COMMIT) {
+      return tret;
+    }
+
+    for (std::vector<Report>::const_iterator p = Reports.begin(),
+	   end = Reports.end(); p != end; ++p) {
+      sqlite3_reset(stmt.Ptr);
+      sqlite3_bind_int64(stmt.Ptr, 1, p->FI->ID);
+      sqlite3_bind_int64(stmt.Ptr, 2, p->Line);
+      sqlite3_bind_int64(stmt.Ptr, 3, p->Column);
+      sqlite3_bind_text(stmt.Ptr, 4, p->Tool.data(), p->Tool.size(),
+			SQLITE_TRANSIENT);
+      sqlite3_bind_text(stmt.Ptr, 5, p->Message.data(), p->Message.size(),
+			SQLITE_TRANSIENT);
+      if (sqlite3_step(stmt.Ptr) != SQLITE_DONE) {
+	return DB->SetTransactionError(sqlite3_sql(stmt.Ptr));
+      }
+    }
+    return TransactionResult::COMMIT;
   }
 
   bool Commit()
   {
-    TransactionResult result =
-      DB->Transact([&]() -> TransactionResult {
-	  TransactionResult tret;
-	  for (auto const &Path : TouchedFiles) {
-	    tret = MarkAsProcessed(Path);
-	    if (tret != TransactionResult::COMMIT) {
-	      return tret;
-	    }
-	  }
-
-	  Statement stmt;
-	  tret = stmt.TxnPrepare
-	    (*DB, "INSERT INTO files (path, mtime, size) VALUES (?, ?, ?)");
-	  if (tret != TransactionResult::COMMIT) {
-	    return tret;
-	  }
-	  for (auto const &E : FTable) {
-	    const FileIdentification &FI(E.second->Ident);
-	    if (E.first != FI.Path) {
-	      // This is a duplicate, secondary entry.  Avoid
-	      // shadowing the real entry.
-	      continue;
-	    }
-	    sqlite3_reset(stmt.Ptr);
-	    sqlite3_bind_text(stmt.Ptr, 1, FI.Path.data(), FI.Path.size(),
-			      SQLITE_TRANSIENT);
-	    sqlite3_bind_int64(stmt.Ptr, 2, FI.Mtime);
-	    sqlite3_bind_int64(stmt.Ptr, 3, FI.Size);
-	    if (sqlite3_step(stmt.Ptr) != SQLITE_DONE) {
-	      return DB->SetTransactionError(sqlite3_sql(stmt.Ptr));
-	    }
-	    E.second->ID = sqlite3_last_insert_rowid(DB->Ptr);
-	  }
-
-	  tret = stmt.TxnPrepare
-	    (*DB,
-	     "INSERT INTO reports (file, line, column, tool, message) "
-	     "VALUES (?, ?, ?, ?, ?);");
-	  if (tret != TransactionResult::COMMIT) {
-	    return tret;
-	  }
-
-	  for (auto const &R : Reports) {
-	    sqlite3_reset(stmt.Ptr);
-	    sqlite3_bind_int64(stmt.Ptr, 1, R.FI->ID);
-	    sqlite3_bind_int64(stmt.Ptr, 2, R.Line);
-	    sqlite3_bind_int64(stmt.Ptr, 3, R.Column);
-	    sqlite3_bind_text(stmt.Ptr, 4, R.Tool.data(), R.Tool.size(),
-			      SQLITE_TRANSIENT);
-	    sqlite3_bind_text(stmt.Ptr, 5, R.Message.data(), R.Message.size(),
-			      SQLITE_TRANSIENT);
-	    if (sqlite3_step(stmt.Ptr) != SQLITE_DONE) {
-	      return DB->SetTransactionError(sqlite3_sql(stmt.Ptr));
-	    }
-	  }
-	  return TransactionResult::COMMIT;
-	});
+    TransactionResult::Enum result = DB->Transact(std::tr1::bind(&Impl::RunCommitTransaction, this));
     return result == TransactionResult::COMMIT;
   }
 
-  TransactionResult MarkAsProcessed(const std::string &Path)
+  TransactionResult::Enum MarkAsProcessed(const std::string &Path)
   {
     std::string Absolute;
     if (!ResolvePath(Path.c_str(), Absolute)) {
@@ -183,7 +189,7 @@ struct FileIdentificationDatabase::Impl {
     }
 
     Statement SQL;
-    TransactionResult tret =
+    TransactionResult::Enum tret =
       SQL.TxnPrepare(*DB, "SELECT id FROM files "
 		     "WHERE path = ? ORDER BY id DESC LIMIT 1");
     if (tret != TransactionResult::COMMIT) {
@@ -201,15 +207,15 @@ struct FileIdentificationDatabase::Impl {
     }
     // Add an entry for the file, hiding the previous reports.
     // TODO: Only hide changed files? What about plugin changes?
-    if (Resolve(Path) == nullptr) {
+    if (Resolve(Path) == NULL) {
       return TransactionResult::ERROR;
     }
     return TransactionResult::COMMIT;
   }
 };
 
-FileIdentificationDatabase::FileIdentificationDatabase(std::shared_ptr<Database> db)
-  : impl(new Impl(std::move(db)))
+FileIdentificationDatabase::FileIdentificationDatabase(std::tr1::shared_ptr<Database> db)
+  : impl(new Impl(db))
 {
 }
 
@@ -219,7 +225,7 @@ FileIdentificationDatabase::~FileIdentificationDatabase()
 
 bool FileIdentificationDatabase::isOpen() const
 {
-  return impl->DB->Ptr != nullptr;
+  return impl->DB->Ptr != NULL;
 }
 
 std::string FileIdentificationDatabase::ErrorMessage() const
@@ -230,15 +236,15 @@ std::string FileIdentificationDatabase::ErrorMessage() const
 bool
 FileIdentificationDatabase::Report
   (const char *Path, unsigned Line, unsigned Column,
-   const char *Tool, std::string Message)
+   const char *Tool, const std::string &Message)
 {
-  return impl->Record(Path, Line, Column, Tool, std::move(Message));
+  return impl->Record(Path, Line, Column, Tool, Message);
 }
 
 void
 FileIdentificationDatabase::MarkForProcessing(const char *Path)
 {
-  impl->TouchedFiles.emplace_back(std::move(Path));
+  impl->TouchedFiles.push_back(Path);
 }
 
 bool

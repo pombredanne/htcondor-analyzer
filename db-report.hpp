@@ -1,6 +1,6 @@
 #pragma once
 
-#include <functional>
+#include <tr1/functional>
 #include <string>
 
 class Database;
@@ -9,9 +9,9 @@ class Database;
 // Called repeatedly as long as the function returns true
 // and there is more data.  The string arguments point to temporary
 // values owned by the caller.
-typedef std::function<bool(const char *RelativePath,
-			   unsigned LineNumber, unsigned ColumnNumber,
-			   const char *ToolName, const char *Message)>
+typedef std::tr1::function<bool(const char *RelativePath,
+				unsigned LineNumber, unsigned ColumnNumber,
+				const char *ToolName, const char *Message)>
   ReportCallback;
 
 

@@ -2,6 +2,8 @@
 #include "db-file.hpp"
 #include "db-report.hpp"
 
+#include <stdio.h>
+
 bool
 Report(Database &DB, ReportCallback CB)
 {
