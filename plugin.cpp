@@ -619,21 +619,21 @@ private:
       return;
     }
 
-    if (Location.isFileID()) {
-      PresumedLoc PLoc = Context.getSourceManager().getPresumedLoc(Location);
-      if (PLoc.isInvalid()) {
-	FatalError(Context.getDiagnostics(),
-		   "attempt to report at an invalid presumed location");
-	return;
-      }
-      const char *FileName = PLoc.getFilename();
-      unsigned Line = PLoc.getLine();
-      unsigned Column = PLoc.getColumn();
-      if (!FileDB->Report(FileName, Line, Column, Tool, Message)) {
-	FatalError(Context.getDiagnostics(), Location,
-		   "could not report: " + FileDB->ErrorMessage());
-	return;
-      }
+    // This obtains the source code location of the outmost macro call.
+    PresumedLoc PLoc = Context.getSourceManager()
+      .getPresumedLocForDisplay(Location);
+    if (PLoc.isInvalid()) {
+      FatalError(Context.getDiagnostics(),
+		 "attempt to report at an invalid presumed location");
+      return;
+    }
+    const char *FileName = PLoc.getFilename();
+    unsigned Line = PLoc.getLine();
+    unsigned Column = PLoc.getColumn();
+    if (!FileDB->Report(FileName, Line, Column, Tool, Message)) {
+      FatalError(Context.getDiagnostics(), Location,
+		 "could not report: " + FileDB->ErrorMessage());
+      return;
     }
   }
 
