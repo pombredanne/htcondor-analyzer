@@ -1,0 +1,38 @@
+Building
+========
+
+Make sure that llvm-config is found on the shell search PATH, and that
+the SQLite 3 development library files are installed.  Then running
+"make" should be sufficient.
+
+Running
+=======
+
+* In the top of the build tree of the project to be analyzed, run
+  "create-db".  This creates the "htcondor-analyzer.sqlite" database
+  file in which the results are stored.
+
+* Run "cmake" (or "./configure"), with CC set to the "cc" script in
+  the plugin directory, and "CXX" set to "cxx".  The scripts activate
+  the clang plugin and pass through the other compiler arguments
+  unmodified.
+
+* Run "make" (or the build tool of your choice).
+
+* Run the "report" program to obtain the output.  The output should
+  always show all detected results for the entire source tree, even if
+  the last build was only incremental.
+
+Known issues
+============
+
+The plugin uses SQLite to persist analysis results.  Sometimes, an
+SQLite transaction may not complete in the expected time (although the
+timeout is fairly generous and should only trigger if the system is
+severely overloaded).  This will result in a build failure.  Just
+running "make" again will typically complete build.
+
+Contact
+=======
+
+Please send comments/questions to Florian Weimer <fweimer@redhat.com>.
