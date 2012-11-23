@@ -23,6 +23,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <limits.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 const char Database::FileName[] = "htcondor-analyzer.sqlite";
@@ -32,6 +33,16 @@ RandomSleep(unsigned ms)
 {
   // Sleep for ms milliseconds on average.
   usleep((rand() % (ms * 1000)) + (rand() % (ms * 1000)));
+}
+
+static double
+Time()
+{
+  struct timeval tv;
+  if (gettimeofday(&tv, NULL) < 0) {
+    abort();
+  }
+  return tv.tv_sec + 1.0E-6 * tv.tv_usec;
 }
 
 static inline bool
@@ -210,6 +221,7 @@ Rollback(Database &DB, Statement &stmtRollback)
 TransactionResult::Enum
 Database::Transact(std::tr1::function<TransactionResult::Enum()> runner)
 {
+  double StartTime = Time();
   Statement stmtBegin, stmtCommit, stmtRollback;
   if (!(stmtBegin.Prepare(*this, "BEGIN")
 	&& stmtCommit.Prepare(*this, "COMMIT")
@@ -217,7 +229,7 @@ Database::Transact(std::tr1::function<TransactionResult::Enum()> runner)
     return TransactionResult::ERROR;
   }
 
-  const unsigned MaxRetries = 6;
+  const unsigned MaxRetries = 8;
   for (unsigned Retries = 0; Retries < MaxRetries; ++Retries) {
     if (Retries > 0) {
       // Randomized exponential back-off.
@@ -263,7 +275,9 @@ Database::Transact(std::tr1::function<TransactionResult::Enum()> runner)
       return TransactionResult::ERROR;
     }
   }
-  ErrorMessage = "could not complete Transact";
+  double EndTime = Time();
+  ErrorMessage = "could not complete Transact within ";
+  AppendFormat(ErrorMessage, "%f seconds", EndTime - StartTime);
   return TransactionResult::ERROR;
 }
   
