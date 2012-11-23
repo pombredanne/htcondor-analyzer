@@ -542,7 +542,7 @@ private:
     default:
       KindStr = NULL;
     }
-    if (KindStr != NULL) {
+    if (KindStr != NULL && Expr->getType()->isPointerType()) {
       Report(Expr->getExprLoc(), "pointer-arith", KindStr);
     }
   }
