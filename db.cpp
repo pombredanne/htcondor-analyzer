@@ -32,7 +32,7 @@ static void
 RandomSleep(unsigned ms)
 {
   // Sleep for ms milliseconds on average.
-  usleep((rand() % (ms * 1000)) + (rand() % (ms * 1000)));
+  usleep(ms * 500 + (rand() % (ms * 500)) + (rand() % (ms * 500)));
 }
 
 static double
@@ -229,11 +229,11 @@ Database::Transact(std::tr1::function<TransactionResult::Enum()> runner)
     return TransactionResult::ERROR;
   }
 
-  const unsigned MaxRetries = 8;
+  const unsigned MaxRetries = 9;
   for (unsigned Retries = 0; Retries < MaxRetries; ++Retries) {
     if (Retries > 0) {
       // Randomized exponential back-off.
-      RandomSleep(100 << (Retries - 1));
+      RandomSleep(100 << Retries);
     }
     sqlite3_reset(stmtBegin.Ptr);
     int ret = sqlite3_step(stmtBegin.Ptr);
