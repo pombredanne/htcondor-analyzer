@@ -23,7 +23,8 @@
 //
 // * Calls to sprintf() and vsprintf() from the libc are logged.  This
 //   is helpful because Condor overloads sprintf() with a safer
-//   variant in which we are not interested.
+//   variant in which we are not interested.  (These overload have
+//   since been removed from Condor.)
 //
 // * Calls to the Condor-specific overloads of sprintf() and
 //   vsprintf() are recorded (as "sprintf-overload").
