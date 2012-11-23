@@ -22,11 +22,11 @@
 //   logged, together with key argument values.
 //
 // * Calls to sprintf() and vsprintf() from the libc are logged.  This
-//   is helpful because Condor overloads sprintf() with a safer
+//   is helpful because HTCondor overloads sprintf() with a safer
 //   variant in which we are not interested.  (These overload have
-//   since been removed from Condor.)
+//   since been removed from HTCondor.)
 //
-// * Calls to the Condor-specific overloads of sprintf() and
+// * Calls to the HTCondor-specific overloads of sprintf() and
 //   vsprintf() are recorded (as "sprintf-overload").
 //
 // * Calls to strcpy/strcat which copy buffers into arguments are
@@ -38,14 +38,14 @@
 // * Calls to alloca are reported as "alloca".
 //
 // The results are stored in an SQLite database
-// "condor-analyzer.sqlite", which must be located in a parent
+// "htcondor-analyzer.sqlite", which must be located in a parent
 // directory.  This database has to be created manually, using the
 // ./create-db utility.
 //
 // Clang has to be invoked this way:
 //
 //   clang++ -Xclang -load -Xclang plugin.so
-//     -Xclang -plugin -Xclang condor-analysis ...
+//     -Xclang -plugin -Xclang htcondor-analysis ...
 //
 // Or use the ./cxx wrapper in this directory.
 //
@@ -77,7 +77,7 @@ void
 FatalError(DiagnosticsEngine &D, const std::string &message)
 {
   unsigned Fatal = D.getCustomDiagID
-    (DiagnosticsEngine::Fatal, "(condor-analysis) " + message);
+    (DiagnosticsEngine::Fatal, "(htcondor-analysis) " + message);
   D.Report(Fatal);
 }
 
@@ -85,7 +85,7 @@ void
 FatalError(DiagnosticsEngine &D, SourceLocation Pos, const std::string &message)
 {
   unsigned Fatal = D.getCustomDiagID
-    (DiagnosticsEngine::Fatal, "(condor-analysis) " + message);
+    (DiagnosticsEngine::Fatal, "(htcondor-analysis) " + message);
   D.Report(Pos, Fatal);
 }
 
@@ -714,12 +714,12 @@ protected:
     return true;
   }
   void PrintHelp(llvm::raw_ostream& ros) {
-    ros << "Analyse Condor source code\n";
+    ros << "Analyse HTCondor source code\n";
   }
 
 };
 
 static FrontendPluginRegistry::Add<Action>
-X("condor-analysis", "Condor source code analysis");
+X("htcondor-analysis", "Condor source code analysis");
 
 }

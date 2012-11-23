@@ -25,7 +25,7 @@
 #include <limits.h>
 #include <unistd.h>
 
-const char Database::FileName[] = "condor-analyzer.sqlite";
+const char Database::FileName[] = "htcondor-analyzer.sqlite";
 
 static void
 RandomSleep(unsigned ms)
