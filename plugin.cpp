@@ -664,13 +664,18 @@ private:
     }
 
     // This obtains the source code location of the outmost macro call.
-    PresumedLoc PLoc = Context.getSourceManager()
-      .getPresumedLocForDisplay(Location);
+    SourceManager &SM(Context.getSourceManager());
+    SourceLocation OuterLocation = Location;
+    while (OuterLocation.isMacroID()) {
+      OuterLocation = SM.getImmediateMacroCallerLoc(OuterLocation);
+    }
+    PresumedLoc PLoc = SM.getPresumedLoc(OuterLocation);
     if (PLoc.isInvalid()) {
       FatalError(Context.getDiagnostics(),
 		 "attempt to report at an invalid presumed location");
       return;
     }
+
     const char *FileName = PLoc.getFilename();
     unsigned Line = PLoc.getLine();
     unsigned Column = PLoc.getColumn();
