@@ -33,6 +33,10 @@
 //   logged because such programming patterns are usually insecure
 //   (similar to gets()).
 //
+// * References to operator[] on standard templates which are not
+//   bounds-checked are flagged with "operator[]" or "operator[]
+//   const".
+//
 // * Pointer arithmetic is flagged as "pointer-arith".
 //
 // * Calls to alloca are reported as "alloca".
@@ -171,6 +175,7 @@ public:
   bool VisitCXXOperatorCallExpr(CXXOperatorCallExpr *Expr)
   {
     ProcessMyStringOperator(Expr);
+    StandardLibraryProcessSubscript(Expr);
     return true;
   }
 
@@ -624,6 +629,40 @@ private:
 	Report(E->getExprLoc(), "pointer-arith", "subscript");
       }
     }
+  }
+
+  ////////////////////////////////////////////////////////////////////
+  // Array subscripts without bounds checks
+
+  void StandardLibraryProcessSubscript(CXXOperatorCallExpr *Expr)
+  {
+    if (Expr->getOperator() == OO_Subscript) {
+      QualType Type;
+      if (matchTypeAgainstVectorOrString(Expr, Type)) {
+	const char *message =
+	  Type.isConstQualified() ? "operator[] const" : "operator[]";
+	Report(Expr->getExprLoc(), message, Type.getAsString());
+      }
+    }
+  }
+
+  // Returns true if the unqualified type is an instance of the
+  // standard library templates vector or basic_string.
+  bool matchTypeAgainstVectorOrString(CXXOperatorCallExpr *Expr, QualType &Type)
+  {
+    Type = Expr->getArg(0)->getType();
+    QualType UType = Type.getCanonicalType().getUnqualifiedType();
+    if (const RecordType *RType = dyn_cast<RecordType>(UType.getTypePtr())) {
+      if (ClassTemplateSpecializationDecl *Decl =
+	  dyn_cast<ClassTemplateSpecializationDecl>(RType->getDecl())) {
+	const std::string Name
+	  (Decl->getSpecializedTemplate()->getQualifiedNameAsString());
+	return Name == "std::vector"
+	  || Name == "std::basic_string"
+	  || Name == "std::array";
+      }
+    }
+    return false;
   }
 
   //////////////////////////////////////////////////////////////////////
