@@ -41,6 +41,9 @@
 //
 // * Calls to alloca are reported as "alloca".
 //
+// * Local variables which are declared static and not const are
+//   reported as "static-local".
+//
 // The results are stored in an SQLite database
 // "htcondor-analyzer.sqlite", which must be located in a parent
 // directory.  This database has to be created manually, using the
@@ -194,6 +197,12 @@ public:
   bool VisitArraySubscriptExpr(ArraySubscriptExpr *Expr)
   {
     PointerArithProcessSubscript(Expr);
+    return true;
+  }
+
+  bool VisitVarDecl(VarDecl *Decl)
+  {
+    ProcessStaticLocal(Decl);
     return true;
   }
 
@@ -685,6 +694,17 @@ private:
       }
     }
   }
+
+  //////////////////////////////////////////////////////////////////////
+  // Static local variables
+
+  void ProcessStaticLocal(VarDecl *Decl)
+  {
+    if (Decl->isStaticLocal() && !Decl->getType().isConstQualified()) {
+      Report(Decl->getLocation(), "static-local", Decl->getNameAsString());
+    }
+  }
+
 
   ////////////////////////////////////////////////////////////////////
   // Helpers
